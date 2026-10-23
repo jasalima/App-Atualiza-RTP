@@ -4,7 +4,7 @@ import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, S
 import { neon } from './neon';
 import { projects as projectsApi } from './api';
 import type { Project, Role, User } from './types';
-import { Notice, Pivot, ScopeContext, ToastProvider, errorText, roleLabel, useScope } from './ui';
+import { Notice, Pivot, ScopeContext, Skeleton, ToastProvider, errorText, roleLabel, useScope } from './ui';
 import Dashboard from './screens/Dashboard';
 import Projects from './screens/Projects';
 import Scholars from './screens/Scholars';
@@ -66,7 +66,11 @@ function Login() {
     e.preventDefault(); setBusy(true); setError('');
     try {
       const result = await neon.auth.signIn.email({ email, password });
-      if (result.error) throw new Error(result.error.status === 401 ? 'E-mail ou senha incorretos.' : result.error.message);
+      if (result.error) {
+        const e = result.error as { status?: number; code?: string; message?: string };
+        const invalid = e.status === 401 || e.code === 'INVALID_EMAIL_OR_PASSWORD' || /invalid email or password/i.test(e.message ?? '');
+        throw new Error(invalid ? 'E-mail ou senha incorretos. Confira maiúsculas e espaços.' : e.status === 429 ? 'Muitas tentativas. Aguarde um minuto e tente de novo.' : 'Não foi possível entrar agora. Tente de novo em instantes.');
+      }
     } catch (x) { setError(errorText(x)); } finally { setBusy(false); }
   }
   return <main className="login">
@@ -111,7 +115,12 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
   const [projectId, setProjectIdState] = useState<string>(() => { try { return localStorage.getItem('rtp.project') ?? ''; } catch { return ''; } });
   const location = useLocation();
   useEffect(() => setOpen(false), [location.pathname]);
-  const reloadProjects = useCallback(async () => { setProjects(await projectsApi.list()); setLoaded(true); }, []);
+  const [loadError, setLoadError] = useState('');
+  const reloadProjects = useCallback(async () => {
+    try { setProjects(await projectsApi.list()); setLoadError(''); }
+    catch (x) { setLoadError(errorText(x)); }
+    finally { setLoaded(true); }
+  }, []);
   useEffect(() => { void reloadProjects(); }, [reloadProjects]);
   const setProjectId = (id: string) => { setProjectIdState(id); try { localStorage.setItem('rtp.project', id); } catch { /* sem armazenamento local */ } };
   const project = projects.find((p) => p.id === projectId) ?? projects.find((p) => p.id === user.projectId) ?? projects[0] ?? null;
@@ -137,7 +146,9 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
       <div className="main">
         <div className="bar"><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu"><Menu /></button><b>RTP Inteligente</b></div>
         <main className="page">
-          {loaded && !project && location.pathname !== '/projects' && location.pathname !== '/settings' ? <FirstProject /> :
+          {/* Screens assume a project in focus: render them only after the list arrives. */}
+          {!loaded ? <Skeleton /> : loadError ? <Notice tone="crit" title="Não foi possível carregar os projetos">{loadError}</Notice> :
+            !project && location.pathname !== '/projects' && location.pathname !== '/settings' ? <FirstProject /> :
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/projects" element={<Projects />} />
