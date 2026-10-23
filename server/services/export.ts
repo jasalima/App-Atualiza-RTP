@@ -27,20 +27,20 @@ export async function toDocx(c: ReportContent) {
   const run = (text: string, opts: { bold?: boolean; size?: number } = {}) => new TextRun({ text, font: FONT, size: opts.size ?? 24, bold: opts.bold });
   const centred = (text: string, bold = true, after = 120) => new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after }, children: [run(text, { bold })] });
   const border = { style: BorderStyle.SINGLE, size: 12, color: FRAME };
-  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
-  const cell = (text: string, opts: { shade?: boolean; bold?: boolean; span?: number; width?: number; bottom?: boolean } = {}) => new TableCell({
+  const grid = { style: BorderStyle.SINGLE, size: 6, color: FRAME };
+  const cell = (text: string, opts: { shade?: boolean; bold?: boolean; span?: number; width?: number; left?: boolean } = {}) => new TableCell({
     columnSpan: opts.span, verticalAlign: VerticalAlign.CENTER, width: opts.width ? { size: opts.width, type: WidthType.DXA } : undefined,
     shading: opts.shade ? { fill: SHADE, type: ShadingType.CLEAR, color: 'auto' } : undefined,
-    borders: { top: none, left: none, right: none, bottom: opts.bottom ? border : none },
     margins: { top: 20, bottom: 20, left: 80, right: 80 },
-    children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run(text, { bold: opts.bold })] })]
+    children: [new Paragraph({ alignment: opts.left ? AlignmentType.JUSTIFIED : AlignmentType.CENTER, children: [run(text, { bold: opts.bold })] })]
   });
   const table = new Table({
-    layout: TableLayoutType.FIXED, width: { size: 8300, type: WidthType.DXA }, alignment: AlignmentType.CENTER, columnWidths: [2900, 5400],
-    borders: { top: border, bottom: border, left: border, right: border, insideHorizontal: none, insideVertical: border },
+    // Full text width of an A4 page with the model's margins (11906 - 1701 - 1134 twips), grid on every cell.
+    layout: TableLayoutType.FIXED, width: { size: 9071, type: WidthType.DXA }, alignment: AlignmentType.CENTER, columnWidths: [2720, 6351],
+    borders: { top: border, bottom: border, left: border, right: border, insideHorizontal: grid, insideVertical: grid },
     rows: [
-      new TableRow({ children: [cell('RELATÓRIO TÉCNICO PARCIAL (RTP)', { span: 2, bold: true, bottom: true })] }),
-      ...idRows(c).map(([label, value, o]) => new TableRow({ children: [cell(label, { width: 2900 }), cell(value, { width: 5400, shade: o.shade, bold: o.bold })] }))
+      new TableRow({ children: [cell('RELATÓRIO TÉCNICO PARCIAL (RTP)', { span: 2, bold: true })] }),
+      ...idRows(c).map(([label, value, o]) => new TableRow({ children: [cell(label, { width: 2720, left: true }), cell(value, { width: 6351, shade: o.shade, bold: o.bold })] }))
     ]
   });
   const heading = (text: string) => new Paragraph({ keepNext: true, keepLines: true, spacing: { before: 240, after: 120 }, children: [run(text, { bold: true })] });
@@ -76,7 +76,7 @@ export function toPdf(c: ReportContent): Promise<Buffer> {
     doc.text(c.heading.form, { width, align: 'center' }).moveDown(0.9);
 
     // Identification table.
-    const tableW = 415, x0 = left + (width - tableW) / 2, col1 = 145, col2 = tableW - col1, pad = 4;
+    const tableW = width, x0 = left, col1 = Math.round(width * 0.3), col2 = tableW - col1, pad = 5;
     const rowH = (text: string, w: number, bold = false) => doc.font(bold ? 'Times-Bold' : 'Times-Roman').fontSize(12).heightOfString(text, { width: w - pad * 2 }) + pad * 2 - 2;
     const top = doc.y;
     let y = top;
@@ -88,9 +88,10 @@ export function toPdf(c: ReportContent): Promise<Buffer> {
     for (const [label, value, o] of idRows(c)) {
       const h = Math.max(rowH(label, col1), rowH(value, col2, o.bold));
       if (o.shade) doc.rect(x0 + col1, y, col2, h).fill(`#${SHADE}`);
-      doc.fillColor('black').font('Times-Roman').text(label, x0 + pad, y + (h - rowH(label, col1)) / 2 + pad - 1, { width: col1 - pad * 2, align: 'center' });
+      doc.fillColor('black').font('Times-Roman').text(label, x0 + pad, y + (h - rowH(label, col1)) / 2 + pad - 1, { width: col1 - pad * 2, align: 'justify' });
       doc.font(o.bold ? 'Times-Bold' : 'Times-Roman').text(value, x0 + col1 + pad, y + pad - 1, { width: col2 - pad * 2, align: 'center' });
       y += h;
+      doc.moveTo(x0, y).lineTo(x0 + tableW, y).lineWidth(0.75).strokeColor(`#${FRAME}`).stroke();
     }
     doc.moveTo(x0 + col1, bodyTop).lineTo(x0 + col1, y).stroke();
     doc.rect(x0, top, tableW, y - top).lineWidth(1.5).stroke();

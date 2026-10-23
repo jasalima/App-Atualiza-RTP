@@ -8,12 +8,15 @@ const base = {
 };
 
 describe('motor de RTP individualizado', () => {
-  it('não transforma atividade planejada em realizada sem registro', () => {
+  // Regra definida pela coordenação: atividade programada no período é relatada como
+  // executada; a ausência de registro individual vira apenas aviso interno de controle.
+  it('relata a atividade programada como executada e registra o aviso interno', () => {
     const input = { ...base, planItems: [{ id:'a1', item_type:'objective', title:'Analisar dados' }, { id:'a2', item_type:'activity', title:'Elaborar estudo hídrico' }], executions: [] };
     const { content } = generateReport(input);
-    expect(content.sections.results).toContain('não foram localizados registros suficientes');
-    expect(content.sections.results).not.toContain('elaborou o estudo hídrico');
-    expect(content.pending[0].activity).toBe('Elaborar estudo hídrico');
+    expect(content.sections.results).toContain('• Elaboração de estudo hídrico.');
+    expect(content.sections.results).not.toMatch(/não foram localizados|pendente/i);
+    expect(content.pending).toEqual([]);
+    expect(validateReport(content, input).find((f) => f.code === 'REPORTED_FROM_SCHEDULE')?.message).toMatch(/^1 atividade/);
   });
 
   it('não incorpora atividade pertencente a outro bolsista', () => {

@@ -58,11 +58,18 @@ describe('redação do RTP', () => {
     expect(content.closing.placeAndDate).toBe('Palmas – TO, 21 de outubro de 2026');
   });
 
-  it('lista como resultado só o que foi confirmado e o restante como pendente', () => {
+  it('lista como executadas as atividades do cronograma, sem frases de dúvida', () => {
     const { content } = generateReport({ ...base, executions: confirmed });
-    expect(content.sections.results).toContain('• Planejamento, organização e acompanhamento da execução orçamentária e financeira.');
-    expect(content.sections.results).toMatch(/Permanecem pendentes de confirmação no período:\n• Elaboração de relatórios gerenciais\./);
-    expect(content.pending.map((p) => p.activity)).toEqual(['Elaborar relatórios gerenciais']);
+    const text = Object.values(content.sections).join('\n');
+    expect(content.sections.results).toMatch(/executadas no período[^\n]*\n• Planejamento, organização e acompanhamento da execução orçamentária e financeira\.\n• Elaboração de relatórios gerenciais\./);
+    expect(text).not.toMatch(/pendente|não foram localizad|não há produtos|comprovad|sem registro/i);
+    expect(content.pending).toEqual([]);
+  });
+
+  it('usa o texto registrado e o resultado quando a execução foi detalhada', () => {
+    const detailed = [{ ...confirmed[0], executed_activity: 'Implantou a planilha de controle orçamentário do projeto', result: 'despesas conciliadas mensalmente' }];
+    const { content } = generateReport({ ...base, executions: detailed });
+    expect(content.sections.results).toContain('• Implantou a planilha de controle orçamentário do projeto, com o seguinte resultado: despesas conciliadas mensalmente.');
   });
 
   it('varia a redação entre bolsistas mantendo-a estável para o mesmo relatório', () => {

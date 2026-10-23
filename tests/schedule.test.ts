@@ -96,11 +96,18 @@ describe('RTP orientado pelo cronograma', () => {
     { id: 'a2', item_type: 'activity', title: 'Elaborar o diagnóstico hídrico;', scheduled_months: ['2027-04', '2027-05'] }
   ];
 
-  it('só cobra no período o que o cronograma programou para ele', () => {
+  it('relata como executado só o que o cronograma programou para o período', () => {
     const { content } = generateReport({ ...base, planItems });
-    expect(content.pending.map((p) => p.activity)).toEqual(['Estruturar o acompanhamento das metas']);
-    expect(content.sections.results).toContain('De acordo com o cronograma de atividades individualizado');
+    expect(content.sections.results).toContain('cronograma de atividades individualizado');
+    expect(content.sections.results).toContain('• Estruturação do acompanhamento das metas.');
     expect(content.sections.results).not.toContain('diagnóstico hídrico');
+  });
+
+  it('não relata como executada a atividade registrada como reprogramada', () => {
+    const executions = [{ id: 'e1', plan_item_id: 'a1', status: 'rescheduled', period_start: '2026-09-01', period_end: '2026-12-31', planned_activity: 'Estruturar o acompanhamento das metas;', notes: 'aguardando definição das metas' }];
+    const { content } = generateReport({ ...base, planItems, executions });
+    expect(content.sections.results).not.toContain('• Estruturação do acompanhamento das metas');
+    expect(content.sections.comparison).toContain('(reprogramada: aguardando definição das metas)');
   });
 
   it('informa o que o cronograma prevê para o período seguinte', () => {
