@@ -13,5 +13,12 @@ export async function loadReportInput(p:Params){
     sql`SELECT * FROM execution_records WHERE scholar_id=${p.scholarId}::uuid AND deleted_at IS NULL AND period_start<=${p.periodEnd}::date AND period_end>=${p.periodStart}::date`
   ]);
   if(!projectRows[0]||!scholarRows[0])return null;
-  return {project:projectRows[0],scholar:scholarRows[0],planStatus:planRows[0]?.status as string|undefined,planItems:[...planItems],executions:[...executions],number:p.number,periodStart:p.periodStart,periodEnd:p.periodEnd,issuedOn:p.issuedOn};
+  return {project:dates(projectRows[0]),scholar:dates(scholarRows[0]),planStatus:planRows[0]?.status as string|undefined,planItems:planItems.map(dates),executions:executions.map(dates),number:p.number,periodStart:p.periodStart,periodEnd:p.periodEnd,issuedOn:p.issuedOn};
+}
+
+// The driver returns DATE columns as JS Date objects (local midnight); the report
+// engine compares and formats them as 'YYYY-MM-DD' strings.
+export const isoDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function dates<T extends Record<string,unknown>>(row:T):T{
+  return Object.fromEntries(Object.entries(row).map(([k,v])=>[k,v instanceof Date?isoDate(v):v])) as T;
 }
