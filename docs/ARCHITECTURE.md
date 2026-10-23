@@ -1,0 +1,38 @@
+# Arquitetura e fronteiras de confiança
+
+```text
+Navegador ── Neon Auth (sessão httpOnly)
+    │
+    ├── @neondatabase/neon-js ── JWT ── Neon Data API ── RLS ── Postgres
+    │
+    └── Next.js Route Handlers (Vercel)
+             ├── Neon Postgres server-only (transações)
+             ├── Neon Object Storage privado
+             └── geração DOCX/PDF e processamento documental
+```
+
+## Identidade e autorização
+
+O Neon Auth administra usuários e sessões no schema `neon_auth`. O navegador não conhece a senha do PostgreSQL. O SDK anexa o JWT às consultas PostgREST e as políticas usam `auth.user_id()` para resolver associações em `user_project_access`.
+
+RLS é habilitado em todas as tabelas institucionais. Administradores e coordenadores podem modificar dados do projeto; bolsistas acessam apenas projetos associados e registram somente a própria execução. Operações server-only repetem a verificação de associação antes de usar a conexão privilegiada.
+
+## Documentos privados
+
+Arquivos são validados por MIME e tamanho, recebem SHA-256 e chave aleatória com prefixo de projeto/usuário. O bucket `rtp-private` não permite leitura anônima. O navegador recebe URLs GET/PUT com validade de cinco minutos, emitidas após autorização. Credenciais S3 ficam exclusivamente na Vercel.
+
+## Fluxo documental
+
+1. Upload para armazenamento privado.
+2. Extração tratada como dado não confiável.
+3. Proposta estruturada com referência de origem.
+4. Conferência humana.
+5. Registro de execução separado do planejamento.
+6. Geração limitada a projeto, bolsista e período.
+7. Lacunas viram pendências; nunca fatos inventados.
+8. Validações críticas bloqueiam aprovação.
+9. Cada edição cria versão imutável e auditável.
+
+## Ambientes
+
+`neon.ts` mantém Auth, Data API e Storage com a mesma semântica de branches. Cada preview da Vercel deve receber URLs e credenciais da branch Neon correspondente, evitando acesso acidental a produção.
