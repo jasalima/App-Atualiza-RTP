@@ -3,7 +3,8 @@ import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { loadReportInput } from '@/lib/report-input';
 import { nextRtpNumber, rtpYear } from '@/lib/rtp-number';
-import { generateReport, validateReport } from '@/server/services/report';
+import { otherReportTexts } from '@/lib/other-reports';
+import { generateDistinct, validateReport } from '@/server/services/report';
 
 // The number is assigned here, never taken from the client: one sequence per
 // project and year shared by every scholar (see migration 005).
@@ -15,6 +16,8 @@ export async function POST(request:Request){
     const session=await requireProject(body.projectId,true);
     if(body.periodEnd<body.periodStart)return Response.json({error:'O período final é anterior ao inicial.'},{status:400});
     const year=rtpYear(body.issuedOn);
+    // Wording is chosen to avoid sentences already used in the project's other reports.
+    const existing=await otherReportTexts(body.projectId);
     // Concurrent generations may pick the same number; the unique index rejects
     // the second one, which retries with the next number.
     for(let attempt=0;attempt<5;attempt++){
@@ -22,7 +25,7 @@ export async function POST(request:Request){
       const number=nextRtpNumber(used,year);
       const input=await loadReportInput({...body,number});
       if(!input)return Response.json({error:'Projeto ou bolsista não encontrado.'},{status:404});
-      const full={...input,lengthMode:body.lengthMode},generated=generateReport(full),findings=validateReport(generated.content,full);
+      const full={...input,lengthMode:body.lengthMode},generated=generateDistinct(full,existing),findings=validateReport(generated.content,full);
       const content=JSON.stringify(generated.content),traceability=JSON.stringify(generated.traceability),validationJson=JSON.stringify(findings);
       try{
         const rows=await sql`

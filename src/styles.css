@@ -389,6 +389,24 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
   .split,.editor{grid-template-columns:1fr}
   .side{position:static}
 }
+/* Bottom tab bar (phones) ------------------------------------------------- */
+.tabbar{display:none}
+@media (max-width:860px){
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--rail);border-top:1px solid #23495a;padding:6px 6px calc(6px + env(safe-area-inset-bottom));justify-content:space-around;align-items:flex-end}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 2px;border:0;background:none;color:var(--rail-ink);font-size:11px;font-weight:600;text-decoration:none!important;cursor:pointer;position:relative;min-width:0}
+  .tab-icon{display:grid;place-items:center;width:44px;height:28px;border-radius:14px}
+  .tab svg{width:20px;height:20px}
+  .tab.active{color:#fff}
+  .tab.active .tab-icon{background:#24505f}
+  .tab.active .tab-icon svg{color:#8fd4a6}
+  /* Primary action raised above the bar, echoing the pivot hub. */
+  .tab-primary .tab-icon{width:52px;height:52px;border-radius:50%;margin-top:-22px;background:var(--pivot);color:#fff;box-shadow:0 0 0 4px var(--rail),0 6px 16px rgba(0,0,0,.3)}
+  .tab-primary.active .tab-icon{background:#256641}
+  .tab-primary.active .tab-icon svg{color:#fff}
+  .tab:focus-visible{outline:2px solid #8fd4a6;outline-offset:-2px;border-radius:8px}
+  .page{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+  .toasts{bottom:calc(84px + env(safe-area-inset-bottom))}
+}
 @media (max-width:860px){
   .app{grid-template-columns:1fr}
   .rail{position:fixed;inset:0 auto 0 0;width:260px;z-index:70;transform:translateX(-100%);transition:transform .2s}

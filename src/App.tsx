@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, Settings, Sparkles, Users } from 'lucide-react';
+import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
 import { neon, resetDataApiToken } from './neon';
 import { projects as projectsApi } from './api';
 import type { Project, Role, User } from './types';
@@ -105,6 +105,10 @@ function NoAccess({ user, logout }: { user: User; logout: () => void }) {
   </main>;
 }
 
+type Tab = readonly [string, string, typeof LayoutGrid, boolean?];
+const tabsManage: Tab[] = [['/', 'Início', LayoutGrid], ['/scholars', 'Bolsistas', Users], ['/generate', 'Gerar RTP', Sparkles, true], ['/reports', 'Relatórios', FileText]];
+const tabsScholar: Tab[] = [['/', 'Início', LayoutGrid], ['/executions', 'Execução', Activity], ['/reports', 'Relatórios', FileText]];
+
 const groups = [
   { label: 'Preparar', items: [['/projects', 'Projetos', FolderKanban], ['/scholars', 'Bolsistas', Users], ['/plans', 'Planos de Trabalho', BookOpen]] },
   { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity]] },
@@ -165,6 +169,11 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>}
         </main>
+        {/* Phone navigation: the most used destinations within thumb reach; "Mais" opens the full menu. */}
+        <nav className="tabbar" aria-label="Navegação rápida">
+          {(canManage ? tabsManage : tabsScholar).map(([to, label, Icon, primary]) => <NavLink key={to} to={to} end={to === '/'} className={primary ? 'tab tab-primary' : 'tab'}><span className="tab-icon"><Icon /></span><span>{label}</span></NavLink>)}
+          <button className="tab" onClick={() => setOpen(true)} aria-label="Abrir menu completo"><span className="tab-icon"><MoreHorizontal /></span><span>Mais</span></button>
+        </nav>
       </div>
     </div>
   </ScopeContext.Provider>;

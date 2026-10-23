@@ -112,7 +112,7 @@ describe('RTP orientado pelo cronograma', () => {
 
   it('informa o que o cronograma prevê para o período seguinte', () => {
     const { content } = generateReport({ ...base, planItems });
-    expect(content.sections.additional).toContain('Para o período subsequente (janeiro de 2027 a março de 2027)');
+    expect(content.sections.additional).toMatch(/janeiro de 2027 a março de 2027/);
   });
 
   it('considera um mês do cronograma dentro do período', () => {

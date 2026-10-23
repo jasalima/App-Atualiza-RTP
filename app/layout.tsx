@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Bricolage_Grotesque, Public_Sans, Tinos } from 'next/font/google';
 import '../src/styles.css';
 
@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   title: 'RTP Inteligente · FAPTO',
   description: 'Gestão e geração rastreável de Relatórios Técnicos Parciais.'
 };
+
+// viewport-fit=cover lets the phone tab bar sit above the home indicator (safe-area insets).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#12303a' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="pt-BR" className={`${display.variable} ${ui.variable} ${doc.variable}`}><body>{children}</body></html>;

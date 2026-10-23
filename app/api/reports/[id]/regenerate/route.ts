@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { isoDate, loadReportInput } from '@/lib/report-input';
-import { generateReport } from '@/server/services/report';
+import { otherReportTexts } from '@/lib/other-reports';
+import { generateDistinct } from '@/server/services/report';
 import type { ReportContent } from '@/server/types';
 
 const sections=['results','comparison','additional'] as const;
@@ -19,7 +20,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     const iso=(d:unknown)=>d instanceof Date?isoDate(d):String(d).slice(0,10);
     const input=await loadReportInput({projectId:String(report.project_id),scholarId:String(report.scholar_id),periodStart:iso(report.period_start),periodEnd:iso(report.period_end),number:String(report.number),issuedOn:iso(report.issued_on)});
     if(!input)return Response.json({error:'Bolsista não encontrado.'},{status:404});
-    const fresh=generateReport({...input,lengthMode:report.length_mode}),current=report.content as ReportContent,next=Number(report.current_version)+1;
+    const fresh=generateDistinct({...input,lengthMode:report.length_mode},await otherReportTexts(String(report.project_id),id)),current=report.content as ReportContent,next=Number(report.current_version)+1;
     const content:ReportContent={...current,sections:{...current.sections,[section]:fresh.content.sections[section]},pending:fresh.content.pending};
     await sql.transaction(tx=>[
       tx`INSERT INTO report_versions(report_id,version,content,traceability,change_summary,created_by) VALUES(${id}::uuid,${next},${JSON.stringify(content)}::jsonb,${JSON.stringify(fresh.traceability)}::jsonb,${`Seção regenerada: ${section}`},${session.user.id})`,

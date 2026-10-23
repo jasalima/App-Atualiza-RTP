@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mainClause, nominalize, toThe } from '../lib/nominalize';
-import { generateReport } from '../server/services/report';
+import { generateDistinct, generateReport, sentencesOf } from '../server/services/report';
 
 // Frases no estilo dos Planos de Trabalho; bolsistas e dados fictícios.
 
@@ -70,6 +70,19 @@ describe('redação do RTP', () => {
     const detailed = [{ ...confirmed[0], executed_activity: 'Implantou a planilha de controle orçamentário do projeto', result: 'despesas conciliadas mensalmente' }];
     const { content } = generateReport({ ...base, executions: detailed });
     expect(content.sections.results).toContain('• Implantou a planilha de controle orçamentário do projeto, com o seguinte resultado: despesas conciliadas mensalmente.');
+  });
+
+  it('não repete nenhuma frase entre membros, mesmo com plano e período idênticos', () => {
+    const a = generateDistinct({ ...base, scholar: { ...base.scholar, id: 'a', role_area: 'Analista Financeiro' }, executions: [] }, []);
+    const b = generateDistinct({ ...base, scholar: { ...base.scholar, id: 'b', role_area: 'Supervisor de Gestão' }, number: '02/2026', executions: [] }, Object.values(a.content.sections));
+    const shared = sentencesOf(Object.values(b.content.sections)).filter((s) => new Set(sentencesOf(Object.values(a.content.sections))).has(s));
+    expect(shared).toEqual([]);
+    expect(b.repeatedSentences).toBe(0);
+  });
+
+  it('cita a continuidade com o RTP anterior do mesmo bolsista', () => {
+    const { content } = generateReport({ ...base, executions: [], previousReports: [{ number: '01/2026', period_start: '2026-07-01', period_end: '2026-08-31' }] });
+    expect(content.sections.results.split('\n\n')[0]).toMatch(/RTP 01\/2026|segundo/);
   });
 
   it('varia a redação entre bolsistas mantendo-a estável para o mesmo relatório', () => {
