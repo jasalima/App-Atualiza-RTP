@@ -3,6 +3,8 @@ import { NavLink, useSearchParams } from 'react-router-dom';
 import { Check, RotateCcw, X } from 'lucide-react';
 import { reports as reportsApi, scholars as scholarsApi } from '../api';
 import type { Execution, PlanItem, Report } from '../types';
+import { hasSchedule, isScheduledIn } from '@/lib/schedule';
+import { Cronograma, gridMonths } from '../Cronograma';
 import { Notice, PageHead, Pivot, Skeleton, Tag, errorText, fmtPeriod, sectorsOf, today, useAsync, useScope } from '../ui';
 
 type Params = { periodStart: string; periodEnd: string; number: string; issuedOn: string; lengthMode: string };
@@ -10,11 +12,10 @@ type Detail = Awaited<ReturnType<typeof scholarsApi.detail>>;
 type Run = { state: 'waiting' | 'running' | 'done' | 'failed'; report?: Report; error?: string };
 type Row = [string, string, 'Validada' | 'A conferir' | 'Ausente', string?];
 
-const overlaps = (a?: string | null, b?: string | null, s?: string, e?: string) => (!a || a <= e!) && (!b || b >= s!);
 
 // Quadro de conferência (spec §9): what the generator will use, where it comes from, and its state.
 function checklist(d: Detail, p: Params): Row[] {
-  const inPeriod = (i: PlanItem) => overlaps(i.starts_on, i.ends_on, p.periodStart, p.periodEnd);
+  const inPeriod = (i: PlanItem) => isScheduledIn(i, p.periodStart, p.periodEnd);
   const confirmed = d.plan?.status === 'confirmed';
   const planState = (n: number): Row[2] => (!n ? 'Ausente' : confirmed ? 'Validada' : 'A conferir');
   const execs = d.executions.filter((e: Execution) => e.period_start <= p.periodEnd && e.period_end >= p.periodStart);
@@ -22,15 +23,16 @@ function checklist(d: Detail, p: Params): Row[] {
   const results = execs.filter((e) => e.result), products = execs.filter((e) => e.product);
   const evidence = execs.reduce((n, e) => n + (e.evidence?.length ?? 0), 0);
   const of = (t: string) => d.planItems.filter((i) => i.item_type === t);
+  const unscheduled = of('activity').filter((i) => !hasSchedule(i)).length;
   const activities = of('activity').filter(inPeriod), outside = execs.filter((e) => e.execution_start && (e.execution_start < p.periodStart || e.execution_start > p.periodEnd));
   return [
     ['Identificação do bolsista', 'Cadastro', d.scholar.full_name && d.scholar.starts_on ? 'Validada' : 'A conferir'],
     ['Objetivos individuais', 'Plano de Trabalho', planState(of('objective').length), `${of('objective').length}`],
-    ['Atividades previstas no período', 'Plano de Trabalho', planState(activities.length), `${activities.length}`],
+    ['Atividades programadas no período', 'Cronograma do plano', planState(activities.length), `${activities.length} de ${of('activity').length}${unscheduled ? `, ${unscheduled} sem meses no cronograma` : ''}`],
     ['Atividades executadas', 'Registro de execução', done.length ? 'A conferir' : 'Ausente', `${done.length} registro(s)${outside.length ? `, ${outside.length} fora do período` : ''}`],
     ['Resultados alcançados', 'Evidências e registros', results.length ? 'A conferir' : 'Ausente', `${results.length} resultado(s), ${evidence} evidência(s)`],
     ['Produtos entregues', 'Evidências e registros', products.length ? 'A conferir' : 'Ausente', `${products.length}`],
-    ['Cronograma', 'Plano de Trabalho', d.planItems.some((i) => i.starts_on) ? planState(1) : 'Ausente', d.planItems.some((i) => i.starts_on) ? undefined : 'sem datas no plano'],
+    ['Cronograma individualizado', 'Plano de Trabalho', of('activity').some(hasSchedule) ? planState(1) : 'Ausente', of('activity').some(hasSchedule) ? undefined : 'nenhuma atividade com meses marcados'],
     ['Relatórios anteriores', 'Histórico', 'Validada', `${d.reports.length}`]
   ];
 }
@@ -97,6 +99,10 @@ export default function Generate() {
             <h3><span>{d.scholar.full_name}</span>{missing ? <Tag tone="warn">{missing} informação(ões) ausente(s)</Tag> : <Tag tone="ok">Dados disponíveis</Tag>}</h3>
             <div className="table-wrap"><table className="check-table"><thead><tr><th>Informação</th><th>Origem</th><th>Situação</th><th>Detalhe</th></tr></thead>
               <tbody>{rows.map(([info, origin, state, note]) => <tr key={info}><td>{info}</td><td>{origin}</td><td><Tag tone={tone[state]}>{state}</Tag></td><td className="muted">{note ?? ''}</td></tr>)}</tbody></table></div>
+            {d.planItems.some((i) => i.item_type === 'activity') && <details className="crono-details" open={details.length === 1}>
+              <summary>Cronograma com o período do RTP destacado</summary>
+              <Cronograma items={d.planItems.filter((i) => i.item_type === 'activity')} months={gridMonths(d.planItems.filter((i) => i.item_type === 'activity'), d.scholar.starts_on, d.scholar.ends_on)} period={[params!.periodStart, params!.periodEnd]} />
+            </details>}
           </div>;
         })}</section>
         <div className="form-foot"><button className="btn btn-quiet" onClick={() => setDetails(null)}>Voltar</button><button className="btn btn-primary" onClick={() => generate(details.map((d) => d.scholar.id))}>Gerar {details.length > 1 ? `${details.length} relatórios preliminares` : 'relatório preliminar'}</button></div>

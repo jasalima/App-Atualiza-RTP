@@ -6,6 +6,8 @@ import type { Execution, PlanItem } from '../types';
 import { Drawer, Empty, Notice, Pivot, Skeleton, Tag, errorText, fmt, fmtPeriod, itemTypesPlural, nextStep, sectorsOf, stageNames, useAsync, useScope, useToast } from '../ui';
 import { ExecutionForm, ExecutionLog, type ExecutionDraft } from './Executions';
 import { ScholarForm } from './Scholars';
+import { Cronograma, gridMonths } from '../Cronograma';
+import { describeMonths, isScheduledIn } from '@/lib/schedule';
 
 type Tab = 'plan' | 'execution' | 'gaps' | 'reports' | 'history';
 
@@ -51,8 +53,12 @@ export default function ScholarDetail() {
       {plan?.functional_identity && <div className="plan-group"><h3>Responsabilidade no projeto</h3><p>{plan.functional_identity}</p></div>}
       {planItems.length ? Object.entries(groups).map(([type, items]) => <div className="plan-group" key={type}>
         <h3>{itemTypesPlural[type] ?? type}<small>{items.length}</small></h3>
-        <ul>{items.map((x) => <li key={x.id}>{x.title}{(x.starts_on || x.ends_on) && <small> ({fmtPeriod(x.starts_on, x.ends_on)})</small>}</li>)}</ul>
+        <ul>{items.map((x) => <li key={x.id}>{x.title}{x.scheduled_months?.length ? <small> ({describeMonths(x.scheduled_months)})</small> : (x.starts_on || x.ends_on) && <small> ({fmtPeriod(x.starts_on, x.ends_on)})</small>}</li>)}</ul>
       </div>) : <Empty title="Plano ainda não importado" action={canManage && <NavLink className="btn btn-primary" to="/plans"><Upload />Importar plano</NavLink>}>Sem o plano individual não há como gerar um RTP fiel às atribuições deste bolsista.</Empty>}
+    </section>}
+    {tab === 'plan' && planItems.some((i) => i.item_type === 'activity') && <section className="panel" style={{ marginTop: 24 }}>
+      <div className="panel-head"><div><h2>Cronograma de atividades individualizado</h2><p>Meses previstos para cada atividade no Plano de Trabalho.</p></div></div>
+      <Cronograma items={planItems.filter((i) => i.item_type === 'activity')} months={gridMonths(planItems.filter((i) => i.item_type === 'activity'), s.starts_on, s.ends_on)} />
     </section>}
 
     {tab === 'execution' && <section className="panel">
@@ -98,7 +104,7 @@ const quick: Array<[string, string, string]> = [
 function Gaps({ planItems, executions, mayWrite, onRegister, onQuick }: { planItems: PlanItem[]; executions: Execution[]; mayWrite: boolean; onRegister: (d: ExecutionDraft) => void; onQuick: (item: PlanItem, status: string, note: string, period: [string, string]) => Promise<void> }) {
   const [start, setStart] = useState(''), [end, setEnd] = useState(''), [open, setOpen] = useState<{ id: string; status: string } | null>(null), [note, setNote] = useState('');
   const gaps = useMemo(() => planItems.filter((i) => i.item_type === 'activity')
-    .filter((i) => !start || !end || ((!i.starts_on || i.starts_on <= end) && (!i.ends_on || i.ends_on >= start)))
+    .filter((i) => !start || !end || isScheduledIn(i, start, end))
     .filter((i) => !executions.some((e) => e.plan_item_id === i.id && (!start || !end || (e.period_start <= end && e.period_end >= start)))), [planItems, executions, start, end]);
   const ready = start && end && end >= start;
   return <section className="panel">

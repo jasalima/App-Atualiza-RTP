@@ -241,7 +241,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--water);margin:0}
 .plan-group li small{color:var(--mute)}
 
 /* Plan conference table --------------------------------------------------- */
-.conf-row{display:grid;grid-template-columns:150px minmax(0,1fr) 130px 130px 36px;gap:10px;padding:10px 24px;border-bottom:1px solid var(--line-soft);align-items:start}
+.conf-row{display:grid;grid-template-columns:150px minmax(0,1fr) 36px;gap:10px;padding:10px 24px;border-bottom:1px solid var(--line-soft);align-items:start}
 .conf-row.head-row{font-size:12.5px;color:var(--mute);font-weight:600;padding-top:12px;padding-bottom:8px}
 .conf-row textarea{min-height:38px;height:38px;padding-top:8px}
 .conf-row .src{font-size:12px;color:var(--mute);margin-top:3px}
@@ -255,6 +255,28 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--water);margin:0}
 .drop svg{width:26px;height:26px;color:var(--water)}
 .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .drop small{color:var(--mute)}
+
+/* Cronograma -------------------------------------------------------------- */
+.crono-wrap{overflow-x:auto;border-top:1px solid var(--line-soft)}
+.crono{border-collapse:collapse;font-size:13px;min-width:100%}
+.crono th,.crono td{border-bottom:1px solid var(--line-soft);padding:0}
+.crono th{font-weight:600;color:var(--mute);font-size:11.5px}
+.crono-year{text-align:left;padding:8px 6px 2px!important;border-left:1px solid var(--line);color:var(--ink-2)!important;font-size:12px!important}
+.crono-m{width:30px;min-width:30px;text-align:center;padding:2px 0 7px!important;font-weight:500!important}
+.crono-m.in{color:var(--water)!important;font-weight:700!important}
+.crono-act{text-align:left;padding:9px 14px 9px 24px!important;min-width:280px;max-width:460px;line-height:1.4;color:var(--ink);vertical-align:top}
+th.crono-act{vertical-align:bottom;color:var(--mute)}
+.crono-n{display:inline-block;min-width:20px;color:var(--mute);font-variant-numeric:tabular-nums}
+.crono td:not(.crono-act){position:relative;height:30px;border-left:1px solid #edf1ef}
+.crono td.in{background:var(--water-wash)}
+.crono td.on::after{content:'';position:absolute;inset:7px 4px;border-radius:3px;background:var(--pivot)}
+.crono td.on.in::after{background:#1f6a5a}
+.crono td button{position:absolute;inset:0;width:100%;border:0;background:transparent;cursor:pointer;z-index:1}
+.crono td button:hover{background:rgba(31,106,150,.12)}
+.crono td button:focus-visible{outline:2px solid var(--water);outline-offset:-2px}
+.crono-details summary{cursor:pointer;padding:10px 24px;font-size:13.5px;font-weight:600;color:var(--water)}
+.crono-details[open] summary{border-bottom:1px solid var(--line-soft)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* Execution log ----------------------------------------------------------- */
 .log{list-style:none;margin:0;padding:0}

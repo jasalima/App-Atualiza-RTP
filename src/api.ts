@@ -83,7 +83,7 @@ export const scholars = {
 export const plans = {
   import: (form: FormData) => route<ImportResult[]>('/plans/import', { method: 'POST', body: form }),
   updateItem: async (id: string, x: Partial<PlanItem>) =>
-    unwrap(await db.from('plan_items').update({ item_type: x.item_type, title: x.title, description: x.description ?? '', starts_on: x.starts_on || null, ends_on: x.ends_on || null }).eq('id', id)),
+    unwrap(await db.from('plan_items').update({ item_type: x.item_type, title: x.title, description: x.description ?? '', starts_on: x.starts_on || null, ends_on: x.ends_on || null, scheduled_months: x.scheduled_months ?? [] }).eq('id', id)),
   addItem: async (planId: string, scholar: Scholar, sortOrder: number): Promise<PlanItem> =>
     unwrap(await db.from('plan_items').insert({ work_plan_id: planId, project_id: scholar.project_id, scholar_id: scholar.id, item_type: 'activity', title: 'Nova atividade', source_reference: { manual: true }, sort_order: sortOrder }).select().single()),
   removeItem: async (id: string) => unwrap(await db.from('plan_items').delete().eq('id', id)),

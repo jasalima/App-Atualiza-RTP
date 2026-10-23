@@ -13,7 +13,7 @@ export async function POST(request:Request){
     if(body.periodEnd<body.periodStart)return Response.json({error:'O período final é anterior ao inicial.'},{status:400});
     const input=await loadReportInput(body);
     if(!input)return Response.json({error:'Projeto ou bolsista não encontrado.'},{status:404});
-    const generated=generateReport(input),findings=validateReport(generated.content,input);
+    const full={...input,lengthMode:body.lengthMode},generated=generateReport(full),findings=validateReport(generated.content,full);
     const content=JSON.stringify(generated.content),traceability=JSON.stringify(generated.traceability),validationJson=JSON.stringify(findings);
     const rows=await sql`
       WITH new_report AS (

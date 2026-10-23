@@ -8,12 +8,12 @@ export async function loadReportInput(p:Params){
   const [projectRows,scholarRows,planRows,planItems,executions]=await Promise.all([
     sql`SELECT * FROM projects WHERE id=${p.projectId}::uuid AND deleted_at IS NULL`,
     sql`SELECT * FROM scholars WHERE id=${p.scholarId}::uuid AND project_id=${p.projectId}::uuid AND deleted_at IS NULL`,
-    sql`SELECT status FROM work_plans WHERE scholar_id=${p.scholarId}::uuid AND status<>'replaced' ORDER BY version DESC LIMIT 1`,
+    sql`SELECT status,functional_identity FROM work_plans WHERE scholar_id=${p.scholarId}::uuid AND status<>'replaced' ORDER BY version DESC LIMIT 1`,
     sql`SELECT pi.* FROM plan_items pi JOIN work_plans w ON w.id=pi.work_plan_id WHERE pi.scholar_id=${p.scholarId}::uuid AND w.status<>'replaced' ORDER BY pi.sort_order`,
     sql`SELECT * FROM execution_records WHERE scholar_id=${p.scholarId}::uuid AND deleted_at IS NULL AND period_start<=${p.periodEnd}::date AND period_end>=${p.periodStart}::date`
   ]);
   if(!projectRows[0]||!scholarRows[0])return null;
-  return {project:dates(projectRows[0]),scholar:dates(scholarRows[0]),planStatus:planRows[0]?.status as string|undefined,planItems:planItems.map(dates),executions:executions.map(dates),number:p.number,periodStart:p.periodStart,periodEnd:p.periodEnd,issuedOn:p.issuedOn};
+  return {project:dates(projectRows[0]),scholar:dates(scholarRows[0]),planStatus:planRows[0]?.status as string|undefined,functionalIdentity:(planRows[0]?.functional_identity as string|undefined)||undefined,planItems:planItems.map(dates),executions:executions.map(dates),number:p.number,periodStart:p.periodStart,periodEnd:p.periodEnd,issuedOn:p.issuedOn};
 }
 
 // The driver returns DATE columns as JS Date objects (local midnight); the report

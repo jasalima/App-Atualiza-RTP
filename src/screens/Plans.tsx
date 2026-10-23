@@ -67,8 +67,8 @@ export default function Plans() {
 
     {results.length > 0 && <section className="panel" style={{ marginTop: 24 }}>
       <div className="panel-head"><div><h2>Resultado da importação</h2><p>Planos extraídos ficam “a conferir” até alguém revisar os itens.</p></div></div>
-      <div className="table-wrap"><table className="ledger"><thead><tr><th>Arquivo</th><th>Bolsista</th><th>Itens</th><th>Situação</th><th /></tr></thead>
-        <tbody>{results.map((r) => <tr key={r.file}><td>{r.file}{r.message && <div className="muted" style={{ fontSize: 13 }}>{r.message}</div>}</td><td>{r.scholarName ?? '—'}</td><td className="num">{r.itemCount ?? '—'}</td><td><Tag tone={resultTone[r.status]}>{resultLabel[r.status]}</Tag></td>
+      <div className="table-wrap"><table className="ledger"><thead><tr><th>Arquivo</th><th>Bolsista</th><th>Itens</th><th>Cronograma</th><th>Situação</th><th /></tr></thead>
+        <tbody>{results.map((r) => <tr key={r.file}><td>{r.file}{r.message && <div className="muted" style={{ fontSize: 13 }}>{r.message}</div>}</td><td>{r.scholarName ?? '—'}</td><td className="num">{r.itemCount ?? '—'}</td><td>{r.status === 'extracted' ? (r.scheduled ? <Tag tone="ok">{r.scheduled} atividade(s) com meses</Tag> : <Tag tone="warn">Não encontrado</Tag>) : '—'}</td><td><Tag tone={resultTone[r.status]}>{resultLabel[r.status]}</Tag></td>
           <td>{r.status === 'extracted' && <NavLink className="btn btn-sm btn-primary" to={`/plans/${r.scholarId}`}>Conferir</NavLink>}</td></tr>)}</tbody></table></div>
     </section>}
 

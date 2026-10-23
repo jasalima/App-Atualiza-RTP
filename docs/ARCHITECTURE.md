@@ -47,3 +47,7 @@ SPA React renderizada só no cliente (`src/ClientApp.tsx`), com o projeto em foc
 - Achados são resolvidos com justificativa (`validations.resolution_note`) e registro em `audit_logs`; críticos em aberto bloqueiam a aprovação no servidor.
 - Numeração do RTP é única por bolsista (`reports_scholar_number_key`), permitindo o mesmo número em lote.
 - Exportar um RTP aprovado muda a situação para `exported`.
+
+## Cronograma individualizado
+
+O cronograma do Formulário 29 é a fonte do que estava programado em cada período. A extração de texto simples achata a tabela ("… X X X X X") e perde a coluna de cada marcação, por isso `server/services/schedule.ts` reconstrói a tabela pelas posições do texto no PDF (pdf.js) ou pela tabela HTML do DOCX: agrupa os fragmentos empilhados do cabeçalho em colunas ("Set;Out;Nov;Dez 2026"), converte cada coluna em meses e liga cada linha de marcações à atividade cujas linhas a envolvem, inclusive quando a atividade continua na página seguinte. Cada item do plano guarda `scheduled_months` ('YYYY-MM'); o RTP considera programadas no período apenas as atividades com algum mês dentro dele (`lib/schedule.ts`), cobra comprovação só delas e informa o que o cronograma prevê para os três meses seguintes. O plano é segmentado pelas seções numeradas do formulário e pelos marcadores ●, com heurística de palavras-chave como reserva para outros modelos.
