@@ -6,10 +6,11 @@ import type { Report, ReportContent, Validation } from '../types';
 import { Notice, Skeleton, Tag, errorText, fmt, fmtPeriod, statusLabel, useScope, useToast } from '../ui';
 
 type Section = keyof ReportContent['sections'];
+// Same titles as the exported DOCX/PDF (server/services/export.ts).
 const sectionTitles: Array<[Section, string, string?]> = [
-  ['results', '1.1 Objetivos propostos no plano individual versus objetivos alcançados', '1. RESULTADOS PARCIAIS'],
-  ['comparison', '1.2 Resultados esperados versus resultados obtidos'],
-  ['additional', '', '2. INFORMAÇÕES ADICIONAIS']
+  ['results', '1.1 Objetivos propostos no plano individual versus objetivos alcançados', '1. Resultados Parciais'],
+  ['comparison', '1.2 Resultados esperados versus resultados obtidos (conforme cronograma estabelecido)'],
+  ['additional', '', '2. Informações Adicionais']
 ];
 const flow = ['draft', 'pending_review', 'approved', 'exported'];
 
@@ -64,13 +65,20 @@ export default function ReportEditor() {
 
     {tab === 'document' && <div className="editor">
       <div className="desk"><article className="paper" lang="pt-BR">
-        <header><div>{content.heading.foundation.toUpperCase()}</div><div>{content.heading.form}</div><div className="title">{content.heading.title}</div></header>
-        <table><tbody>
-          <tr><td>Título do Projeto:</td><td>{content.heading.project}</td></tr>
-          <tr><td>Bolsista:</td><td>{content.heading.scholar}</td></tr>
-          <tr><td>Vigência da Bolsa:</td><td>{content.heading.scholarshipPeriod}</td></tr>
-          <tr><td>RTP Nº:</td><td>{content.heading.number}</td></tr>
-        </tbody></table>
+        <header>
+          <img src="/fapto-logo.png" alt="FAPTO, Fundação de Apoio Científico e Tecnológico do Tocantins" />
+          <p>{content.heading.foundation.toLocaleUpperCase('pt-BR')}</p>
+          <p>{content.heading.form}</p>
+        </header>
+        <table className="id-table">
+          <thead><tr><th colSpan={2}>{content.heading.title}</th></tr></thead>
+          <tbody>
+            <tr><td>Título do Projeto</td><td className="shade">{content.heading.project}</td></tr>
+            <tr><td>Bolsista:</td><td>{content.heading.scholar}</td></tr>
+            <tr><td>Vigência da Bolsa:</td><td className="shade"><b>{content.heading.scholarshipPeriod}</b></td></tr>
+            <tr><td>RTP Nº:</td><td>{content.heading.number}</td></tr>
+          </tbody>
+        </table>
         {sectionTitles.map(([key, title, chapter]) => <div key={key}>
           {chapter && <h2>{chapter}</h2>}
           <section className="sec">
@@ -79,7 +87,7 @@ export default function ReportEditor() {
           </section>
         </div>)}
         {content.pending.length > 0 && <div className="pending-box"><b>Pendente de confirmação ({content.pending.length})</b>Sem registro de execução no período. Este quadro não sai no arquivo exportado.<ul>{content.pending.map((p) => <li key={p.activity}>{p.activity}</li>)}</ul></div>}
-        <div className="signature"><p className="place">{content.closing.placeAndDate}</p><i /><b>{content.closing.scholar}</b><div>{content.closing.role}</div></div>
+        <div className="signature"><p className="place">{content.closing.placeAndDate}</p><div>{content.closing.scholar}</div><div>{content.closing.role}</div></div>
       </article></div>
 
       <aside className="side">

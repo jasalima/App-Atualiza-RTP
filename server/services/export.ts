@@ -1,41 +1,112 @@
-import { AlignmentType, Document, Footer, HeadingLevel, Packer, PageNumber, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
+import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
+import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo.js';
 import type { ReportContent } from '../types.js';
 
+// Layout of the FAPTO Formulário 9 model: logo, foundation and form name centred;
+// an identification table whose first row reads "RELATÓRIO TÉCNICO PARCIAL (RTP)";
+// numbered sections; place/date on the right and the scholar's name centred.
+export const SECTION_TITLES = {
+  part: '1. Resultados Parciais',
+  results: '1.1 Objetivos propostos no plano individual versus objetivos alcançados',
+  comparison: '1.2 Resultados esperados versus resultados obtidos (conforme cronograma estabelecido)',
+  additional: '2. Informações Adicionais'
+} as const;
+const FRAME = '8EA2BF', SHADE = 'DCE6F2', FONT = 'Times New Roman';
+const foundationLine = (c: ReportContent) => c.heading.foundation.toLocaleUpperCase('pt-BR');
+const idRows = (c: ReportContent): Array<[string, string, { shade?: boolean; bold?: boolean }]> => [
+  ['Título do Projeto', c.heading.project, { shade: true }],
+  ['Bolsista:', c.heading.scholar, {}],
+  ['Vigência da Bolsa:', c.heading.scholarshipPeriod, { shade: true, bold: true }],
+  ['RTP Nº:', c.heading.number, {}]
+];
+/** Each line of a section is its own paragraph; lines starting with "•" are bullet items. */
+const lines = (text: string) => text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+
 export async function toDocx(c: ReportContent) {
-  const rows = [['Título do Projeto', c.heading.project], ['Bolsista', c.heading.scholar], ['Vigência da Bolsa', c.heading.scholarshipPeriod], ['RTP Nº', c.heading.number]];
+  const run = (text: string, opts: { bold?: boolean; size?: number } = {}) => new TextRun({ text, font: FONT, size: opts.size ?? 24, bold: opts.bold });
+  const centred = (text: string, bold = true, after = 120) => new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after }, children: [run(text, { bold })] });
+  const border = { style: BorderStyle.SINGLE, size: 12, color: FRAME };
+  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const cell = (text: string, opts: { shade?: boolean; bold?: boolean; span?: number; width?: number; bottom?: boolean } = {}) => new TableCell({
+    columnSpan: opts.span, verticalAlign: VerticalAlign.CENTER, width: opts.width ? { size: opts.width, type: WidthType.DXA } : undefined,
+    shading: opts.shade ? { fill: SHADE, type: ShadingType.CLEAR, color: 'auto' } : undefined,
+    borders: { top: none, left: none, right: none, bottom: opts.bottom ? border : none },
+    margins: { top: 20, bottom: 20, left: 80, right: 80 },
+    children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run(text, { bold: opts.bold })] })]
+  });
+  const table = new Table({
+    layout: TableLayoutType.FIXED, width: { size: 8300, type: WidthType.DXA }, alignment: AlignmentType.CENTER, columnWidths: [2900, 5400],
+    borders: { top: border, bottom: border, left: border, right: border, insideHorizontal: none, insideVertical: border },
+    rows: [
+      new TableRow({ children: [cell('RELATÓRIO TÉCNICO PARCIAL (RTP)', { span: 2, bold: true, bottom: true })] }),
+      ...idRows(c).map(([label, value, o]) => new TableRow({ children: [cell(label, { width: 2900 }), cell(value, { width: 5400, shade: o.shade, bold: o.bold })] }))
+    ]
+  });
+  const heading = (text: string) => new Paragraph({ keepNext: true, keepLines: true, spacing: { before: 240, after: 120 }, children: [run(text, { bold: true })] });
+  const body = (text: string) => lines(text).map((l) => new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 120, line: 276 }, children: [run(l)] }));
   const doc = new Document({ sections: [{
-    properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
-    footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun('Página '), new TextRun({ children: [PageNumber.CURRENT] })] })] }) },
+    properties: { page: { margin: { top: 1134, bottom: 1134, left: 1701, right: 1134 } } },
     children: [
-      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: c.heading.foundation, bold: true, size: 22 })] }),
-      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: c.heading.form, bold: true, size: 22 })] }),
-      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 320 }, children: [new TextRun({ text: c.heading.title, bold: true, size: 24 })] }),
-      new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: rows.map(([label, value]) => new TableRow({ children: [new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })] }), new TableCell({ width: { size: 75, type: WidthType.PERCENTAGE }, children: [new Paragraph(value)] })] })) }),
-      heading('1. RESULTADOS PARCIAIS'), heading('1.1 Objetivos propostos no plano individual versus objetivos alcançados', HeadingLevel.HEADING_2), ...paras(c.sections.results),
-      heading('1.2 Resultados esperados versus resultados obtidos', HeadingLevel.HEADING_2), ...paras(c.sections.comparison),
-      heading('2. INFORMAÇÕES ADICIONAIS'), ...paras(c.sections.additional),
-      new Paragraph({ spacing: { before: 600 }, alignment: AlignmentType.RIGHT, text: c.closing.placeAndDate }),
-      new Paragraph({ spacing: { before: 900 }, alignment: AlignmentType.CENTER, children: [new TextRun('________________________________________')] }),
-      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: c.closing.scholar, bold: true })] }),
-      new Paragraph({ alignment: AlignmentType.CENTER, text: c.closing.role })
+      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 }, children: [new ImageRun({ type: 'png', data: FAPTO_LOGO_PNG, transformation: { width: 150, height: Math.round(150 * FAPTO_LOGO_SIZE.height / FAPTO_LOGO_SIZE.width) } })] }),
+      centred(foundationLine(c), true, 240),
+      centred(c.heading.form, true, 240),
+      table,
+      new Paragraph({ spacing: { after: 120 }, children: [] }),
+      heading(SECTION_TITLES.part), heading(SECTION_TITLES.results), ...body(c.sections.results),
+      heading(SECTION_TITLES.comparison), ...body(c.sections.comparison),
+      heading(SECTION_TITLES.additional), ...body(c.sections.additional),
+      new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 360, after: 1200 }, children: [run(c.closing.placeAndDate)] }),
+      centred(c.closing.scholar, false, 0),
+      centred(c.closing.role, false, 0)
     ]
   }] });
   return Packer.toBuffer(doc);
 }
-const heading = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) => new Paragraph({ heading: level, keepNext: true, spacing: { before: 320, after: 160 }, children: [new TextRun({ text, bold: true })] });
-const paras = (text: string) => text.split(/\n\n+/).map((p) => new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 160, line: 360 }, text: p }));
 
 export function toPdf(c: ReportContent): Promise<Buffer> {
-  return new Promise((resolve) => {
-    const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 55, left: 56, right: 56 }, bufferPages: true });
-    const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.font('Helvetica-Bold').fontSize(10).text(c.heading.foundation, { align: 'center' }).moveDown(.5).text(c.heading.form, { align: 'center' }).fontSize(12).text(c.heading.title, { align: 'center' }).moveDown();
-    [['Título do Projeto:', c.heading.project], ['Bolsista:', c.heading.scholar], ['Vigência da Bolsa:', c.heading.scholarshipPeriod], ['RTP Nº:', c.heading.number]].forEach(([k, v]) => { doc.font('Helvetica-Bold').fontSize(9).text(k, { continued: true }).font('Helvetica').text(` ${v}`).moveDown(.3); });
-    const section = (title: string, body: string) => { doc.moveDown().font('Helvetica-Bold').fontSize(10).text(title, { continued: false }).moveDown(.4).font('Helvetica').fontSize(10).text(body, { align: 'justify', lineGap: 3 }); };
-    section('1. RESULTADOS PARCIAIS', ''); section('1.1 Objetivos propostos no plano individual versus objetivos alcançados', c.sections.results); section('1.2 Resultados esperados versus resultados obtidos', c.sections.comparison); section('2. INFORMAÇÕES ADICIONAIS', c.sections.additional);
-    doc.moveDown(2).text(c.closing.placeAndDate, { align: 'right' }).moveDown(3).text('________________________________________', { align: 'center' }).font('Helvetica-Bold').text(c.closing.scholar, { align: 'center' }).font('Helvetica').text(c.closing.role, { align: 'center' });
-    const pages = doc.bufferedPageRange(); for (let i = 0; i < pages.count; i++) { doc.switchToPage(i); doc.fontSize(8).text(`Página ${i + 1} de ${pages.count}`, 56, 800, { width: 483, align: 'center' }); }
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 57, bottom: 57, left: 85, right: 57 }, bufferPages: true });
+    const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
+    const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right, bottom = () => doc.page.height - doc.page.margins.bottom;
+    const logoW = 112, logoH = logoW * FAPTO_LOGO_SIZE.height / FAPTO_LOGO_SIZE.width;
+    doc.image(FAPTO_LOGO_PNG, left + (width - logoW) / 2, doc.y, { width: logoW });
+    doc.y += logoH + 16;
+    doc.font('Times-Bold').fontSize(12).text(foundationLine(c), left, doc.y, { width, align: 'center' }).moveDown(0.9);
+    doc.text(c.heading.form, { width, align: 'center' }).moveDown(0.9);
+
+    // Identification table.
+    const tableW = 415, x0 = left + (width - tableW) / 2, col1 = 145, col2 = tableW - col1, pad = 4;
+    const rowH = (text: string, w: number, bold = false) => doc.font(bold ? 'Times-Bold' : 'Times-Roman').fontSize(12).heightOfString(text, { width: w - pad * 2 }) + pad * 2 - 2;
+    const top = doc.y;
+    let y = top;
+    const titleH = rowH('RELATÓRIO TÉCNICO PARCIAL (RTP)', tableW, true);
+    doc.font('Times-Bold').text('RELATÓRIO TÉCNICO PARCIAL (RTP)', x0 + pad, y + pad - 1, { width: tableW - pad * 2, align: 'center' });
+    y += titleH;
+    doc.moveTo(x0, y).lineTo(x0 + tableW, y).lineWidth(1).strokeColor(`#${FRAME}`).stroke();
+    const bodyTop = y;
+    for (const [label, value, o] of idRows(c)) {
+      const h = Math.max(rowH(label, col1), rowH(value, col2, o.bold));
+      if (o.shade) doc.rect(x0 + col1, y, col2, h).fill(`#${SHADE}`);
+      doc.fillColor('black').font('Times-Roman').text(label, x0 + pad, y + (h - rowH(label, col1)) / 2 + pad - 1, { width: col1 - pad * 2, align: 'center' });
+      doc.font(o.bold ? 'Times-Bold' : 'Times-Roman').text(value, x0 + col1 + pad, y + pad - 1, { width: col2 - pad * 2, align: 'center' });
+      y += h;
+    }
+    doc.moveTo(x0 + col1, bodyTop).lineTo(x0 + col1, y).stroke();
+    doc.rect(x0, top, tableW, y - top).lineWidth(1.5).stroke();
+    doc.y = y + 22;
+
+    const ensure = (needed: number) => { if (doc.y + needed > bottom()) doc.addPage(); };
+    const heading = (text: string) => { ensure(70); doc.font('Times-Bold').fontSize(12).fillColor('black').text(text, left, doc.y, { width, align: 'left' }).moveDown(0.45); };
+    const body = (text: string) => { for (const l of lines(text)) { ensure(30); doc.font('Times-Roman').fontSize(12).text(l, left, doc.y, { width, align: 'justify', lineGap: 2 }).moveDown(0.45); } };
+    heading(SECTION_TITLES.part); heading(SECTION_TITLES.results); body(c.sections.results);
+    doc.moveDown(0.5); heading(SECTION_TITLES.comparison); body(c.sections.comparison);
+    doc.moveDown(0.5); heading(SECTION_TITLES.additional); body(c.sections.additional);
+
+    ensure(150);
+    doc.moveDown(0.8).font('Times-Roman').text(c.closing.placeAndDate, left, doc.y, { width, align: 'right' });
+    doc.y += 70;
+    doc.text(c.closing.scholar, left, doc.y, { width, align: 'center' }).text(c.closing.role, { width, align: 'center' });
     doc.end();
   });
 }

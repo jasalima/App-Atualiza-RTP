@@ -5,6 +5,14 @@ import type { Execution, ImportResult, PlanItem, Project, Report, ReportContent,
 
 const db = neon as any;
 
+// A single-row read that comes back empty without an error (e.g. an interrupted
+// request) must not reach the screen as a blank record.
+function unwrapRow<T>(result: { data: T | null; error?: { message: string } | null }, what: string): T {
+  const row = unwrap(result);
+  if (!row) throw new Error(`Não foi possível carregar ${what}. Recarregue a página.`);
+  return row;
+}
+
 function unwrap<T>({ data, error }: { data: T; error?: { message: string } | null }): T {
   if (error) throw new Error(error.message);
   return data;
@@ -70,7 +78,7 @@ export const scholars = {
     ]);
     const planRows = unwrap<WorkPlan[]>(plans);
     return {
-      scholar: unwrap<Scholar>(scholar),
+      scholar: unwrapRow<Scholar>(scholar, 'o bolsista'),
       plan: planRows.find((p) => p.status !== 'replaced') ?? null,
       planHistory: planRows,
       planItems: unwrap<PlanItem[]>(items),
@@ -130,7 +138,7 @@ export const reports = {
       db.from('report_versions').select('version,content,change_summary,created_at').eq('report_id', id).order('version', { ascending: false }),
       db.from('validations').select('*').eq('report_id', id).order('created_at', { ascending: true })
     ]);
-    const row: any = unwrap(report), all: any[] = unwrap(versions), current = all.find((v) => v.version === row.current_version) ?? all[0];
+    const row: any = unwrapRow(report, 'o relatório'), all: any[] = unwrap(versions), current = all.find((v) => v.version === row.current_version) ?? all[0];
     return { ...row, scholar_name: row.scholars?.full_name, content: current?.content, versions: all, validations: unwrap<Validation[]>(validations) };
   },
   generate: (body: Record<string, string>) => route<Report>('/reports/generate', { method: 'POST', body: JSON.stringify(body) }),

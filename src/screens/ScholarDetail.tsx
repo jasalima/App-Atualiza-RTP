@@ -71,6 +71,12 @@ export default function ScholarDetail() {
         await executionsApi.create(s.project_id, s.id, { planItemId: item.id, plannedActivity: item.title, periodStart: period[0], periodEnd: period[1], status, executedActivity: status === 'in_progress' ? note : '', notes: note });
         toast('Situação registrada.'); void reload();
       } catch (x) { toast(errorText(x), 'crit'); }
+    }} onBulk={async (items, status, period) => {
+      try {
+        // executed_activity repeats the planned text: the report renders it in nominal form as a confirmed result.
+        await Promise.all(items.map((item) => executionsApi.create(s.project_id, s.id, { planItemId: item.id, plannedActivity: item.title, executedActivity: item.title, periodStart: period[0], periodEnd: period[1], status, notes: 'Execução confirmada pelo responsável conforme o cronograma de atividades individualizado.' })));
+        toast(`${items.length} atividade(s) confirmada(s).`); void reload();
+      } catch (x) { toast(errorText(x), 'crit'); }
     }} />}
 
     {tab === 'reports' && <section className="panel">
@@ -101,21 +107,33 @@ const quick: Array<[string, string, string]> = [
   ['not_applicable', 'Excluir do relato do período', 'Justificativa da exclusão']
 ];
 
-function Gaps({ planItems, executions, mayWrite, onRegister, onQuick }: { planItems: PlanItem[]; executions: Execution[]; mayWrite: boolean; onRegister: (d: ExecutionDraft) => void; onQuick: (item: PlanItem, status: string, note: string, period: [string, string]) => Promise<void> }) {
+function Gaps({ planItems, executions, mayWrite, onRegister, onQuick, onBulk }: { planItems: PlanItem[]; executions: Execution[]; mayWrite: boolean; onRegister: (d: ExecutionDraft) => void; onQuick: (item: PlanItem, status: string, note: string, period: [string, string]) => Promise<void>; onBulk: (items: PlanItem[], status: string, period: [string, string]) => Promise<void> }) {
   const [start, setStart] = useState(''), [end, setEnd] = useState(''), [open, setOpen] = useState<{ id: string; status: string } | null>(null), [note, setNote] = useState('');
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set()), [bulkStatus, setBulkStatus] = useState('completed'), [busy, setBusy] = useState(false);
   const gaps = useMemo(() => planItems.filter((i) => i.item_type === 'activity')
     .filter((i) => !start || !end || isScheduledIn(i, start, end))
     .filter((i) => !executions.some((e) => e.plan_item_id === i.id && (!start || !end || (e.period_start <= end && e.period_end >= start)))), [planItems, executions, start, end]);
   const ready = start && end && end >= start;
+  const selected = gaps.filter((g) => !unchecked.has(g.id));
+  const toggle = (id: string) => setUnchecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return <section className="panel">
-    <div className="panel-head"><div><h2>Atividades sem comprovação</h2><p>Atividades previstas sem registro de execução no período. Sem ação, elas aparecem no RTP como pendentes de confirmação.</p></div></div>
+    <div className="panel-head"><div><h2>Atividades sem comprovação</h2><p>Atividades programadas no cronograma sem registro de execução no período. Sem ação, elas aparecem no RTP como pendentes de confirmação.</p></div></div>
     <div className="toolbar">
       <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>Período de<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
       <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>a<input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
-      {!ready && <span className="muted" style={{ fontSize: 13 }}>Informe o período para registrar uma situação.</span>}
+      {!ready && <span className="muted" style={{ fontSize: 13 }}>Informe o período do RTP para ver as atividades programadas.</span>}
     </div>
+    {/* Bulk confirmation: the responsible person states that the scheduled activities
+        were carried out. The RTP then reports them as results; nothing is assumed. */}
+    {mayWrite && ready && gaps.length > 0 && <div className="bulk">
+      <div><b>Confirmar execução das atividades programadas</b><p>Marque as atividades efetivamente realizadas no período. Cada confirmação gera um registro de execução em seu nome e passa a constar no RTP como resultado. Para detalhar resultados, produtos ou evidências, use “Registrar execução”.</p></div>
+      <div className="bulk-actions">
+        <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} aria-label="Situação a registrar"><option value="completed">Concluídas no período</option><option value="in_progress">Em andamento no período</option></select>
+        <button className="btn btn-go" disabled={!selected.length || busy} onClick={async () => { setBusy(true); try { await onBulk(selected, bulkStatus, [start, end]); setUnchecked(new Set()); } finally { setBusy(false); } }}>{busy ? 'Registrando…' : `Confirmar ${selected.length} atividade(s)`}</button>
+      </div>
+    </div>}
     {gaps.length ? gaps.map((g) => <div className="gap" key={g.id}>
-      <h4>{g.title}</h4>
+      <h4 style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>{mayWrite && ready && <input type="checkbox" checked={!unchecked.has(g.id)} onChange={() => toggle(g.id)} aria-label="Incluir na confirmação" style={{ marginTop: 3 }} />}<span>{g.title}</span></h4>
       <p>Não foram localizadas informações suficientes para confirmar a execução desta atividade no período selecionado.</p>
       {mayWrite && <div className="gap-actions">
         <button className="btn btn-sm btn-primary" onClick={() => onRegister({ plan_item_id: g.id, period_start: start, period_end: end })}>Registrar execução</button>
