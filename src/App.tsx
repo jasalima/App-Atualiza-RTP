@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, Settings, Sparkles, Users } from 'lucide-react';
-import { neon } from './neon';
+import { neon, resetDataApiToken } from './neon';
 import { projects as projectsApi } from './api';
 import type { Project, Role, User } from './types';
 import { Notice, Pivot, ScopeContext, Skeleton, ToastProvider, errorText, roleLabel, useScope } from './ui';
@@ -24,6 +24,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
     const authUser = session.data?.user;
+    resetDataApiToken();
     if (!authUser) { setUser(null); return; }
     // A person may hold several memberships; the strongest role defines the interface.
     neon.from('user_project_access').select('role,project_id,scholar_id').eq('auth_user_id', authUser.id)
@@ -32,7 +33,7 @@ function App() {
         setUser({ id: authUser.id, name: authUser.name || authUser.email, email: authUser.email, role: best?.role ?? null, projectId: best?.project_id ?? null, scholarId: best?.scholar_id ?? null });
       });
   }, [session.data]);
-  const logout = useCallback(() => { void neon.auth.signOut(); setUser(null); }, []);
+  const logout = useCallback(() => { resetDataApiToken(); void neon.auth.signOut(); setUser(null); }, []);
   if (session.isPending || (session.data?.user && !user)) return <div className="splash"><Pivot sectors={['on', 'on', 'warn', 'off', 'off']} size={64} animate label="Carregando" /></div>;
   if (!user) return <Login />;
   if (!user.role) return <NoAccess user={user} logout={logout} />;
