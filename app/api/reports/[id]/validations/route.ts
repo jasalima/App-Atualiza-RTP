@@ -12,7 +12,7 @@ export async function PATCH(request:Request,{params}:{params:Promise<{id:string}
     const rows=await sql`UPDATE validations SET resolved_at=now(),resolved_by=${session.user.id},resolution_note=${body.note}
       WHERE id=${body.validationId}::uuid AND report_id=${id}::uuid AND resolved_at IS NULL RETURNING *`;
     if(!rows[0])return Response.json({error:'Validação inexistente ou já resolvida.'},{status:404});
-    await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'resolve','validation',${body.validationId},jsonb_build_object('report',${id},'note',${body.note}))`;
+    await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'resolve','validation',${body.validationId},jsonb_build_object('report',${id}::text,'note',${body.note}::text))`;
     return Response.json(rows[0]);
   }catch(error){return routeError(error)}
 }

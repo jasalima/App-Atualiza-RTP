@@ -11,7 +11,7 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
     await sql.transaction(tx=>[
       tx`INSERT INTO report_versions(report_id,version,content,change_summary,created_by) VALUES(${id}::uuid,${next},${JSON.stringify(body.content)}::jsonb,${body.changeSummary},${session.user.id})`,
       tx`UPDATE reports SET current_version=${next},status='draft' WHERE id=${id}::uuid`,
-      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'revise','report',${id},jsonb_build_object('version',${next}))`
+      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'revise','report',${id},jsonb_build_object('version',${next}::int))`
     ]);
     return Response.json({version:next});
   }catch(error){return routeError(error)}

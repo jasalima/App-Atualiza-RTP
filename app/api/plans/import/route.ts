@@ -35,14 +35,20 @@ export async function POST(request:Request){
       const sha=crypto.createHash('sha256').update(buffer).digest('hex'),extension=file.name.split('.').pop()?.replace(/[^a-z0-9]/gi,'').toLowerCase()||'bin';
       const key=`${projectId}/${scholarId}/${crypto.randomUUID()}.${extension}`;
       await putPrivateObject(key,buffer,file.type);
-      const documents=await sql`INSERT INTO documents(project_id,scholar_id,kind,original_name,mime_type,size_bytes,storage_key,sha256,extracted_text,extraction_status,created_by) VALUES(${projectId}::uuid,${scholarId}::uuid,'individual_work_plan',${file.name},${file.type},${file.size},${key},${sha},${text},'extracted',${session.user.id}) RETURNING id`;
-      const versionRows=await sql`SELECT coalesce(max(version),0)+1 next FROM work_plans WHERE scholar_id=${scholarId}::uuid`;
-      await sql`UPDATE work_plans SET status='replaced' WHERE scholar_id=${scholarId}::uuid AND status<>'replaced'`;
-      const plans=await sql`INSERT INTO work_plans(project_id,scholar_id,document_id,version,raw_extraction) VALUES(${projectId}::uuid,${scholarId}::uuid,${String(documents[0].id)}::uuid,${Number(versionRows[0].next)},${JSON.stringify(structured)}::jsonb) RETURNING id,version`;
-      let order=0;
-      for(const [type,items] of Object.entries(structured.items))for(const item of items)await sql`INSERT INTO plan_items(work_plan_id,project_id,scholar_id,item_type,title,description,source_reference,sort_order) VALUES(${String(plans[0].id)}::uuid,${projectId}::uuid,${scholarId}::uuid,${type},${item.title},${item.description},${JSON.stringify({...item.source_reference,file:file.name})}::jsonb,${order++})`;
-      await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${projectId}::uuid,'import','work_plan',${String(plans[0].id)},jsonb_build_object('file',${file.name},'sha256',${sha},'storage','neon-object-storage'))`;
-      results.push({file:file.name,status:'extracted',scholarId,scholarName:match.scholar.full_name,planId:String(plans[0].id),version:Number(plans[0].version),itemCount:order});
+      // One transaction per file: document, new plan version, items and audit entry
+      // are stored together or not at all, so a failure never leaves a half-imported plan.
+      const documentId=crypto.randomUUID(),planId=crypto.randomUUID();
+      const items=Object.entries(structured.items).flatMap(([type,list])=>list.map((item)=>({type,...item})));
+      await sql.transaction(tx=>[
+        tx`INSERT INTO documents(id,project_id,scholar_id,kind,original_name,mime_type,size_bytes,storage_key,sha256,extracted_text,extraction_status,created_by) VALUES(${documentId}::uuid,${projectId}::uuid,${scholarId}::uuid,'individual_work_plan',${file.name},${file.type},${file.size},${key},${sha},${text},'extracted',${session.user.id})`,
+        tx`INSERT INTO work_plans(id,project_id,scholar_id,document_id,version,raw_extraction)
+           SELECT ${planId}::uuid,${projectId}::uuid,${scholarId}::uuid,${documentId}::uuid,coalesce(max(version),0)+1,${JSON.stringify(structured)}::jsonb FROM work_plans WHERE scholar_id=${scholarId}::uuid`,
+        tx`UPDATE work_plans SET status='replaced' WHERE scholar_id=${scholarId}::uuid AND id<>${planId}::uuid AND status<>'replaced'`,
+        ...items.map((item,order)=>tx`INSERT INTO plan_items(work_plan_id,project_id,scholar_id,item_type,title,description,source_reference,sort_order) VALUES(${planId}::uuid,${projectId}::uuid,${scholarId}::uuid,${item.type},${item.title},${item.description},${JSON.stringify({...item.source_reference,file:file.name})}::jsonb,${order})`),
+        tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${projectId}::uuid,'import','work_plan',${planId},jsonb_build_object('file',${file.name}::text,'sha256',${sha}::text,'storage','neon-object-storage'))`
+      ]);
+      const version=await sql`SELECT version FROM work_plans WHERE id=${planId}::uuid`;
+      results.push({file:file.name,status:'extracted',scholarId,scholarName:match.scholar.full_name,planId,version:Number(version[0].version),itemCount:items.length});
     }
     return Response.json(results,{status:results.some(r=>r.status==='extracted')?201:422});
   }catch(error){return routeError(error)}

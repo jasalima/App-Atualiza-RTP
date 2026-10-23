@@ -13,7 +13,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string;f
     // Only an approved report becomes "exported"; drafts can be previewed as files without changing status.
     if(rows[0].status==='approved')await sql.transaction(tx=>[
       tx`UPDATE reports SET status='exported' WHERE id=${id}::uuid`,
-      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(rows[0].project_id)}::uuid,'export','report',${id},jsonb_build_object('format',${format}))`
+      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(rows[0].project_id)}::uuid,'export','report',${id},jsonb_build_object('format',${format}::text))`
     ]);
     return new Response(new Uint8Array(file),{headers:{'Content-Type':format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf','Content-Disposition':`attachment; filename="RTP-${String(rows[0].number).replace(/[^a-z0-9-]/gi,'_')}.${format}"`}});
   }catch(error){return routeError(error)}

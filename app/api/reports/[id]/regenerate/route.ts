@@ -24,7 +24,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     await sql.transaction(tx=>[
       tx`INSERT INTO report_versions(report_id,version,content,traceability,change_summary,created_by) VALUES(${id}::uuid,${next},${JSON.stringify(content)}::jsonb,${JSON.stringify(fresh.traceability)}::jsonb,${`Seção regenerada: ${section}`},${session.user.id})`,
       tx`UPDATE reports SET current_version=${next},status='draft' WHERE id=${id}::uuid`,
-      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(report.project_id)}::uuid,'regenerate','report',${id},jsonb_build_object('section',${section},'version',${next}))`
+      tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(report.project_id)}::uuid,'regenerate','report',${id},jsonb_build_object('section',${section}::text,'version',${next}::int))`
     ]);
     return Response.json({version:next,content});
   }catch(error){return routeError(error)}
