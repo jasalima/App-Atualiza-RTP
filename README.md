@@ -66,6 +66,16 @@ npm audit
 
 Importe o repositório na Vercel e vincule o projeto Neon pela integração oficial. Configure todas as variáveis descritas em `.env.example`; somente `NEXT_PUBLIC_NEON_AUTH_URL` e `NEXT_PUBLIC_NEON_DATA_API_URL` podem chegar ao navegador. Preview deployments devem apontar para branches Neon próprias.
 
+Variáveis mínimas para o primeiro deploy:
+
+- `DATABASE_URL`;
+- `NEON_AUTH_BASE_URL`;
+- `NEON_AUTH_COOKIE_SECRET` — gere com `openssl rand -base64 32`;
+- `NEXT_PUBLIC_NEON_AUTH_URL`;
+- `NEXT_PUBLIC_NEON_DATA_API_URL`.
+
+Marque-as para Production, Preview e Development conforme os ambientes utilizados. Depois de adicionar ou alterar uma variável na Vercel, faça um novo deploy: valores `NEXT_PUBLIC_*` são incorporados durante o build.
+
 ## Estrutura
 
 - `app/`: App Router e Route Handlers;

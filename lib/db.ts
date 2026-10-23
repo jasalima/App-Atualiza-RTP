@@ -1,4 +1,8 @@
 import { neon } from '@neondatabase/serverless';
+import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 
-if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada.');
-export const sql = neon(process.env.DATABASE_URL);
+const isBuild = process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
+const databaseUrl = process.env.DATABASE_URL ?? (isBuild ? 'postgresql://build:build@localhost/build' : undefined);
+
+if (!databaseUrl) throw new Error('DATABASE_URL não configurada no ambiente de execução.');
+export const sql = neon(databaseUrl);
