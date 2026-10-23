@@ -110,8 +110,9 @@ export function generateReport(input: Input, attempt = 0): { content: ReportCont
   // 1.1 — opening: period framing, link to the objectives, role.
   // Anchors of this scholar, used so that no stock sentence is shared between members:
   // the function (or the core of the general objective), first/last executed activity, first product.
-  // Without a function the next sentence already names the focus, so the framing stays general.
-  const scope = role ? `da função de ${lower(role)}` : 'previstas no Plano de Trabalho do Bolsista';
+  // Without a function, the framing is anchored on the first executed activity (the
+  // next sentence already names the focus), so it still differs between members.
+  const scope = role ? `da função de ${lower(role)}` : executed[0] ? `relacionadas ${toThe(short(nominalize(executed[0].title), 55))} e às demais atribuições do plano` : 'previstas no Plano de Trabalho do Bolsista';
   const framing = pick([
     `O presente relatório refere-se às atividades ${scope} no período de ${period}${prev ? `, em continuidade ao RTP ${prev.number}, que abrangeu o intervalo de ${fmt(prev.period_start)} a ${fmt(prev.period_end)}` : elapsedText ? `, que compreende ${elapsedText}` : ''}.`,
     `Este ${ordinal} Relatório Técnico Parcial abrange as atividades ${scope} realizadas de ${fmt(start)} a ${fmt(end)}${elapsedText ? `, alcançando ${elapsedText}` : ''}.`,
@@ -131,8 +132,8 @@ export function generateReport(input: Input, attempt = 0): { content: ReportCont
 
   // Every template sentence carries something of this scholar (function or focus,
   // first specific objective), so stock phrasing never repeats across members.
-  // Without a function, a short neutral reference: the focus is already stated in the opening and in section 2.
-  const theme = role ? `da função de ${lower(role)}` : 'do Plano de Trabalho do Bolsista';
+  // Without a function, a compact label from the core of the general objective.
+  const theme = role ? `da função de ${lower(role)}` : focus ? ofN(short(focus, 45)) : 'do Plano de Trabalho do Bolsista';
   const firstObjective = specifics[0] ? withArticle(short(nominalize(specifics[0].title), 80)) : '';
   const objectiveText = !objectives.length ? 'O Plano de Trabalho não apresenta objetivos individuais suficientemente estruturados para este período, sendo necessária conferência documental.'
     : mode === 'detailed' && specifics.length ? `Os objetivos específicos previstos no Plano de Trabalho são:\n${bullets(specifics.map((o) => o.title))}`
