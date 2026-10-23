@@ -13,7 +13,12 @@ export default function Plans() {
   const list = useAsync(() => scholarsApi.list(project!.id), [project?.id]);
   const [mode, setMode] = useState<'auto' | 'one'>('auto'), [scholarId, setScholarId] = useState('');
   const [files, setFiles] = useState<File[]>([]), [over, setOver] = useState(false), [busy, setBusy] = useState(false), [results, setResults] = useState<ImportResult[]>([]);
-  const add = (incoming: FileList | null) => incoming && setFiles((cur) => [...cur, ...Array.from(incoming).filter((f) => !cur.some((c) => c.name === f.name && c.size === f.size))]);
+  // Copy the FileList right away: the browser empties it once the input is reset
+  // or the drop event ends, before React runs the state updater.
+  const add = (incoming: FileList | null) => {
+    const picked = Array.from(incoming ?? []);
+    if (picked.length) setFiles((cur) => [...cur, ...picked.filter((f) => !cur.some((c) => c.name === f.name && c.size === f.size))]);
+  };
 
   async function upload() {
     const fd = new FormData();
