@@ -1,6 +1,6 @@
 import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
-import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo.js';
+import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
 import type { ReportContent } from '../types.js';
 
 // Layout of the FAPTO Formulário 9 model: logo, foundation and form name centred;
