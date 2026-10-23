@@ -36,3 +36,14 @@ Arquivos são validados por MIME e tamanho, recebem SHA-256 e chave aleatória c
 ## Ambientes
 
 `neon.ts` mantém Auth, Data API e Storage com a mesma semântica de branches. Cada preview da Vercel deve receber URLs e credenciais da branch Neon correspondente, evitando acesso acidental a produção.
+
+## Interface
+
+SPA React renderizada só no cliente (`src/ClientApp.tsx`), com o projeto em foco mantido no menu lateral. O elemento visual central é o pivô: um círculo por bolsista, dividido nas cinco etapas do ciclo (plano importado, plano conferido, execução registrada, RTP gerado, RTP aprovado), com o braço apontando para a última etapa alcançada. Fontes via `next/font`: Bricolage Grotesque (títulos), Public Sans (interface) e Tinos (pré-visualização do documento, métrica compatível com Times do DOCX).
+
+## Revisão e aprovação
+
+- Plano importado fica `pending_review` até a conferência humana; gerar RTP com plano não conferido produz o achado `PLAN_NOT_CONFIRMED`.
+- Achados são resolvidos com justificativa (`validations.resolution_note`) e registro em `audit_logs`; críticos em aberto bloqueiam a aprovação no servidor.
+- Numeração do RTP é única por bolsista (`reports_scholar_number_key`), permitindo o mesmo número em lote.
+- Exportar um RTP aprovado muda a situação para `exported`.

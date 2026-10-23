@@ -22,7 +22,13 @@ O SDK `@neondatabase/neon-js` usa sua camada compatível com PostgREST. O endpoi
 - geração individual de RTP com recorte temporal e indicação de lacunas;
 - validações críticas que bloqueiam aprovação;
 - editor, versões imutáveis, auditoria e exportação DOCX/PDF;
-- dashboard e histórico por bolsista.
+- conferência humana do plano importado antes do uso;
+- importação em lote com identificação do bolsista pelo nome no documento;
+- geração em lote com quadro de conferência, progresso e repetição só das falhas;
+- tratamento de lacunas (registrar, em andamento, reprogramação, exclusão justificada);
+- resolução de achados de validação com justificativa auditada;
+- regeneração de seção, comparação e restauração de versões;
+- dashboard com o ciclo de cada bolsista, tabela de acompanhamento e filtros.
 
 ## Provisionamento Neon
 
@@ -62,6 +68,16 @@ npm run build
 npm audit
 ```
 
+## Variáveis
+
+O arquivo `.env.local` (ignorado pelo git) já traz os endpoints do projeto Neon `rtpprojetos`. Faltam apenas os segredos:
+
+- `DATABASE_URL`: Neon Console > rtpprojetos > Connect, string *pooled* do banco `neondb`;
+- `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`: Neon Console > Storage > Credentials, escopos `storage:read` e `storage:write`;
+- o bucket privado `rtp-private` precisa existir na branch `production`.
+
+Depois de preencher, rode `npm run db:migrate` para aplicar `003_review_workflow.sql`.
+
 ## Vercel
 
 Importe o repositório na Vercel e vincule o projeto Neon pela integração oficial. Configure todas as variáveis descritas em `.env.example`; somente `NEXT_PUBLIC_NEON_AUTH_URL` e `NEXT_PUBLIC_NEON_DATA_API_URL` podem chegar ao navegador. Preview deployments devem apontar para branches Neon próprias.
@@ -79,7 +95,7 @@ Marque-as para Production, Preview e Development conforme os ambientes utilizado
 ## Estrutura
 
 - `app/`: App Router e Route Handlers;
-- `src/`: interface React e cliente Neon Data API;
+- `src/`: interface React (`src/screens/` por tela, `src/ui.tsx` com componentes compartilhados) e cliente Neon Data API;
 - `lib/`: Neon Auth, conexão server-only e Object Storage;
 - `database/migrations/`: esquema e políticas RLS;
 - `server/services/`: regras puras de extração, geração e exportação;

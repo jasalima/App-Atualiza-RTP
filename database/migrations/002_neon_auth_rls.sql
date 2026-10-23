@@ -2,12 +2,13 @@
 -- The application never grants the anonymous role access to institutional data.
 
 CREATE TABLE IF NOT EXISTS user_project_access (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id text NOT NULL,
-  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
   scholar_id uuid REFERENCES scholars(id) ON DELETE SET NULL,
   role user_role NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (auth_user_id, project_id),
+  UNIQUE NULLS NOT DISTINCT (auth_user_id, project_id),
   UNIQUE (scholar_id)
 );
 
@@ -119,6 +120,7 @@ CREATE TRIGGER projects_audit AFTER INSERT OR UPDATE OR DELETE ON projects FOR E
 CREATE TRIGGER scholars_audit AFTER INSERT OR UPDATE OR DELETE ON scholars FOR EACH ROW EXECUTE FUNCTION record_data_change();
 CREATE TRIGGER executions_audit AFTER INSERT OR UPDATE OR DELETE ON execution_records FOR EACH ROW EXECUTE FUNCTION record_data_change();
 
--- Bootstrap once from the Neon SQL Editor after the first Neon Auth signup:
+-- Bootstrap once after the first Neon Auth signup. A global administrator does
+-- not need a project association and can create the first institutional project.
 -- INSERT INTO user_project_access(auth_user_id, project_id, role)
--- VALUES ('<neon-auth-user-id>', '<project-id>', 'admin');
+-- VALUES ('<neon-auth-user-id>', NULL, 'admin');

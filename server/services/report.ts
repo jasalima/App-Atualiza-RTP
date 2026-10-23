@@ -1,6 +1,6 @@
 import type { ReportContent } from '../types.js';
 
-type Input = { project: any; scholar: any; planItems: any[]; executions: any[]; number: string; periodStart: string; periodEnd: string; issuedOn: string };
+type Input = { project: any; scholar: any; planItems: any[]; executions: any[]; number: string; periodStart: string; periodEnd: string; issuedOn: string; planStatus?: string };
 const fmt = (date: string) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 const join = (values: string[]) => values.filter(Boolean).join('; ');
 
@@ -16,10 +16,12 @@ export function generateReport(input: Input): { content: ReportContent; traceabi
   const expected = relevant.filter((i) => ['product', 'goal'].includes(i.item_type)).map((x) => x.title);
   const products = done.map((e) => e.product).filter(Boolean);
   const comparison = expected.length ? `Foram previstos para o ciclo os seguintes resultados ou produtos: ${join(expected)}. ${products.length ? `Constam como produtos registrados: ${join(products)}.` : 'Não há produtos comprovados cadastrados até o momento.'} As atividades em andamento ou sem evidência permanecem sujeitas a complementação e validação humana.` : 'Não há resultados esperados estruturados suficientes para estabelecer comparação conclusiva. Os registros do período devem ser complementados antes da aprovação.';
+  const deviations = input.executions.filter((e) => ['rescheduled', 'delayed'].includes(e.status)).map((e) => `${e.planned_activity || e.executed_activity}${e.status === 'rescheduled' ? ' (reprogramada' : ' (em atraso'}${e.notes ? `: ${e.notes}` : ''})`);
+  const comparisonWithDeviations = deviations.length ? `${comparison} Registram-se os seguintes desvios em relação ao cronograma: ${join(deviations)}.` : comparison;
   const extras = done.flatMap((e) => [e.difficulties && `Dificuldade registrada: ${e.difficulties}.`, e.actions_taken && `Providência adotada: ${e.actions_taken}.`]).filter(Boolean);
   const content: ReportContent = {
     heading: { foundation: input.project.support_foundation, form: 'FORMULÁRIO 9', title: 'RELATÓRIO TÉCNICO PARCIAL (RTP)', project: input.project.title, scholar: input.scholar.full_name, scholarshipPeriod: `${fmt(input.scholar.starts_on)} a ${fmt(input.scholar.ends_on)}`, number: input.number },
-    sections: { results: `${objectiveText}\n\n${executionText}`, comparison, additional: extras.length ? extras.join(' ') : 'Não foram registradas informações complementares relevantes para o período.' },
+    sections: { results: `${objectiveText}\n\n${executionText}`, comparison: comparisonWithDeviations, additional: extras.length ? extras.join(' ') : 'Não foram registradas informações complementares relevantes para o período.' },
     closing: { placeAndDate: `${input.project.city}, ${fmt(input.issuedOn)}`, scholar: input.scholar.full_name, role: 'Bolsista' }, pending
   };
   return { content, traceability: { objectives: objectives.map((x) => x.id), activities: activities.map((x) => x.id), executions: done.map((x) => x.id), pending: pending.map((x) => x.activity) } };
@@ -27,6 +29,7 @@ export function generateReport(input: Input): { content: ReportContent; traceabi
 
 export function validateReport(content: ReportContent, input: Input) {
   const findings: Array<{ severity: string; code: string; message: string; location: string; source_reference: object }> = [];
+  if (input.planStatus && input.planStatus !== 'confirmed') findings.push({ severity: 'attention', code: 'PLAN_NOT_CONFIRMED', message: 'O Plano de Trabalho ainda não foi conferido e confirmado por um responsável.', location: 'Plano de Trabalho', source_reference: { planStatus: input.planStatus } });
   if (!input.planItems.some((x) => x.item_type === 'objective')) findings.push({ severity: 'attention', code: 'NO_OBJECTIVES', message: 'Objetivos individuais não foram confirmados no plano.', location: 'Seção 1.1', source_reference: {} });
   content.pending.forEach((p) => findings.push({ severity: 'attention', code: 'UNCONFIRMED_ACTIVITY', message: p.reason, location: 'Seção 1.2', source_reference: { activity: p.activity } }));
   for (const e of input.executions) if (e.execution_start && (e.execution_start < input.periodStart || e.execution_start > input.periodEnd)) findings.push({ severity: 'critical', code: 'OUTSIDE_PERIOD', message: 'Registro de execução fora do período do RTP.', location: 'Seção 1.1', source_reference: { executionId: e.id } });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
+import { loadReportInput } from '@/lib/report-input';
 import { generateReport, validateReport } from '@/server/services/report';
 
 const schema=z.object({projectId:z.string().uuid(),scholarId:z.string().uuid(),periodStart:z.string(),periodEnd:z.string(),number:z.string().min(1),issuedOn:z.string(),lengthMode:z.enum(['concise','standard','detailed']).default('standard')});
@@ -9,14 +10,9 @@ export async function POST(request:Request){
   try{
     const body=schema.parse(await request.json());
     const session=await requireProject(body.projectId,true);
-    const [projectRows,scholarRows,planItems,executions]=await Promise.all([
-      sql`SELECT * FROM projects WHERE id=${body.projectId}::uuid AND deleted_at IS NULL`,
-      sql`SELECT * FROM scholars WHERE id=${body.scholarId}::uuid AND project_id=${body.projectId}::uuid AND deleted_at IS NULL`,
-      sql`SELECT pi.* FROM plan_items pi JOIN work_plans w ON w.id=pi.work_plan_id WHERE pi.scholar_id=${body.scholarId}::uuid AND w.status<>'replaced'`,
-      sql`SELECT * FROM execution_records WHERE scholar_id=${body.scholarId}::uuid AND deleted_at IS NULL AND period_start<=${body.periodEnd}::date AND period_end>=${body.periodStart}::date`
-    ]);
-    if(!projectRows[0]||!scholarRows[0])return Response.json({error:'Projeto ou bolsista não encontrado.'},{status:404});
-    const input={project:projectRows[0],scholar:scholarRows[0],planItems:[...planItems],executions:[...executions],number:body.number,periodStart:body.periodStart,periodEnd:body.periodEnd,issuedOn:body.issuedOn};
+    if(body.periodEnd<body.periodStart)return Response.json({error:'O período final é anterior ao inicial.'},{status:400});
+    const input=await loadReportInput(body);
+    if(!input)return Response.json({error:'Projeto ou bolsista não encontrado.'},{status:404});
     const generated=generateReport(input),findings=validateReport(generated.content,input);
     const content=JSON.stringify(generated.content),traceability=JSON.stringify(generated.traceability),validationJson=JSON.stringify(findings);
     const rows=await sql`
@@ -35,5 +31,8 @@ export async function POST(request:Request){
         SELECT ${session.user.id},project_id,'generate','report',id::text,jsonb_build_object('number',number) FROM new_report
       ) SELECT * FROM new_report`;
     return Response.json({...rows[0],content:generated.content,validations:findings},{status:201});
-  }catch(error){return routeError(error)}
+  }catch(error){
+    if((error as {code?:string}).code==='23505')return Response.json({error:'Este bolsista já possui um RTP com esse número.'},{status:409});
+    return routeError(error);
+  }
 }

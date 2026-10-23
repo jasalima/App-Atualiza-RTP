@@ -8,8 +8,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "db:migrate": "tsx server/db/migrate.ts",
-    "db:seed": "tsx server/db/seed.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env.local server/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env.local server/db/seed.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
