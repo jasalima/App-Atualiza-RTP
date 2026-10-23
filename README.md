@@ -76,7 +76,7 @@ O arquivo `.env.local` (ignorado pelo git) já traz os endpoints do projeto Neon
 - `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`: Neon Console > Storage > Credentials, escopos `storage:read` e `storage:write`;
 - o bucket privado `rtp-private` precisa existir na branch `production`.
 
-Depois de preencher, rode `npm run db:migrate` para aplicar `003_review_workflow.sql`.
+Depois de preencher, rode `npm run db:migrate`. Toda migração que cria ou altera colunas exige recarregar o cache de esquema da Data API, senão gravações nessas colunas falham com `PGRST204`: rode `npx neonctl data-api refresh-schema --project-id billowing-cell-00427875 --branch br-odd-unit-b4gzt32j --database neondb` ou clique em *Refresh schema cache* em Neon Console > Data API.
 
 ## Vercel
 
