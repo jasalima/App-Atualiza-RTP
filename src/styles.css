@@ -292,6 +292,7 @@ th.crono-act{vertical-align:bottom;color:var(--mute)}
 
 /* Gap cards --------------------------------------------------------------- */
 .gap{padding:16px 24px;border-bottom:1px solid var(--line-soft)}
+.next-number{display:flex;align-items:center;height:38px;font-family:var(--display);font-stretch:80%;font-size:22px;font-weight:620;color:var(--ink);font-variant-numeric:tabular-nums}
 .bulk{display:flex;gap:18px;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:16px 24px;background:var(--pivot-wash);border-bottom:1px solid var(--line)}
 .bulk b{display:block;font-size:15px}
 .bulk p{font-size:13.5px;color:var(--ink-2);margin-top:3px;max-width:68ch}

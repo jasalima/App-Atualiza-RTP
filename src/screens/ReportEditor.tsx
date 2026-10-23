@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { NavLink, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Check, Download, RefreshCw } from 'lucide-react';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Check, Download, RefreshCw, Trash2 } from 'lucide-react';
 import { download, reports as reportsApi } from '../api';
 import type { Report, ReportContent, Validation } from '../types';
 import { Notice, Skeleton, Tag, errorText, fmt, fmtPeriod, statusLabel, useScope, useToast } from '../ui';
@@ -21,7 +21,13 @@ function AutoText({ value, onChange, label, readOnly }: { value: string; onChang
 }
 
 export default function ReportEditor() {
-  const { id } = useParams(), { canManage } = useScope(), toast = useToast();
+  const { id } = useParams(), { canManage } = useScope(), toast = useToast(), nav = useNavigate();
+  async function remove() {
+    const reason = prompt(`Excluir o RTP ${report!.number}? Ele sairá das listas, mas fica guardado no histórico de auditoria, e o número ${report!.number} não será reutilizado.\n\nInforme o motivo da exclusão:`);
+    if (reason === null) return;
+    if (reason.trim().length < 5) return toast('Informe o motivo com ao menos 5 caracteres.', 'crit');
+    try { await reportsApi.remove(id!, reason); toast(`RTP ${report!.number} excluído.`); nav('/reports'); } catch (x) { toast(errorText(x), 'crit'); }
+  }
   const [report, setReport] = useState<Report | null>(null), [content, setContent] = useState<ReportContent | null>(null), [error, setError] = useState('');
   const [tab, setTab] = useState<'document' | 'validation' | 'versions'>('document'), [busy, setBusy] = useState<string | null>(null), [compare, setCompare] = useState<number | null>(null);
   const load = () => reportsApi.get(id!).then((r) => { setReport(r); setContent(r.content!); }, (x) => setError(errorText(x)));
@@ -55,7 +61,7 @@ export default function ReportEditor() {
     <NavLink to="/reports" className="back"><ArrowLeft />Relatórios</NavLink>
     <div className="head">
       <div><h1>RTP {report.number}</h1><p>{report.scholar_name}, período {fmtPeriod(report.period_start, report.period_end)}. Versão {report.current_version}.</p></div>
-      <div className="head-actions">{dirty && <span className="dirty" style={{ alignSelf: 'center' }}>Alterações não salvas</span>}{!locked && <button className="btn" disabled={!dirty || !!busy} onClick={() => save()}>{busy === 'save' ? 'Salvando…' : 'Salvar versão'}</button>}</div>
+      <div className="head-actions">{dirty && <span className="dirty" style={{ alignSelf: 'center' }}>Alterações não salvas</span>}{!locked && <button className="btn" disabled={!dirty || !!busy} onClick={() => save()}>{busy === 'save' ? 'Salvando…' : 'Salvar versão'}</button>}{canManage && <button className="btn btn-quiet btn-danger" disabled={!!busy} onClick={remove}><Trash2 />Excluir</button>}</div>
     </div>
     <div className="tabs" role="tablist">
       <button role="tab" aria-selected={tab === 'document'} onClick={() => setTab('document')}>Documento</button>
@@ -94,6 +100,14 @@ export default function ReportEditor() {
         <div className="panel">
           <h3>Situação</h3>
           <ol className="flow-state">{flow.map((s, i) => <li key={s} data-state={i < stage ? 'done' : i === stage ? 'current' : undefined}>{statusLabel(s)}</li>)}</ol>
+          {canManage && (report.status === 'approved' || report.status === 'exported') && <>
+            <button className="btn btn-block" style={{ marginTop: 12 }} disabled={!!busy} onClick={() => {
+              const reason = prompt('Motivo da reabertura (fica no histórico de auditoria). A aprovação será retirada e o RTP voltará a rascunho para edição:');
+              if (reason && reason.trim().length >= 5) void act('reopen', () => reportsApi.reopen(id!, reason), 'RTP reaberto para edição.');
+              else if (reason !== null) toast('Informe o motivo com ao menos 5 caracteres.', 'crit');
+            }}>Reabrir para edição</button>
+            <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Aprovado e bloqueado para edição. Reabrir retira a aprovação.</p>
+          </>}
           {canManage && report.status === 'draft' && <button className="btn btn-block" style={{ marginTop: 12 }} disabled={dirty || !!busy} onClick={() => act('submit', () => reportsApi.submit(id!), 'Enviado para revisão.')}>Enviar para revisão</button>}
           {canManage && (report.status === 'draft' || report.status === 'pending_review') && <>
             <button className="btn btn-go btn-block" style={{ marginTop: 8 }} disabled={critical.length > 0 || dirty || !!busy} onClick={() => act('approve', () => reportsApi.approve(id!), 'RTP aprovado.')}><Check />Aprovar RTP</button>

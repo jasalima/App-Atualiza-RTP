@@ -4,10 +4,18 @@ import { Check, RotateCcw, X } from 'lucide-react';
 import { reports as reportsApi, scholars as scholarsApi } from '../api';
 import type { Execution, PlanItem, Report } from '../types';
 import { hasSchedule, isScheduledIn } from '@/lib/schedule';
+import { nextRtpNumber, rtpYear } from '@/lib/rtp-number';
+
+/** "02/2026", or "02/2026 a 05/2026" when several scholars are generated in sequence. */
+function numberPreview(used: string[], issuedOn: string, count: number) {
+  const year = rtpYear(issuedOn || today()), first = nextRtpNumber(used, year);
+  if (count <= 1) return first;
+  return `${first} a ${String(Number(first.split('/')[0]) + count - 1).padStart(2, '0')}/${year}`;
+}
 import { Cronograma, gridMonths } from '../Cronograma';
 import { Notice, PageHead, Pivot, Skeleton, Tag, errorText, fmtPeriod, sectorsOf, today, useAsync, useScope } from '../ui';
 
-type Params = { periodStart: string; periodEnd: string; number: string; issuedOn: string; lengthMode: string };
+type Params = { periodStart: string; periodEnd: string; issuedOn: string; lengthMode: string };
 type Detail = Awaited<ReturnType<typeof scholarsApi.detail>>;
 type Run = { state: 'waiting' | 'running' | 'done' | 'failed'; report?: Report; error?: string };
 type Row = [string, string, 'Validada' | 'A conferir' | 'Ausente', string?];
@@ -41,6 +49,9 @@ const tone = { Validada: 'ok', 'A conferir': 'warn', Ausente: 'crit' } as const;
 export default function Generate() {
   const { project } = useScope(), [search] = useSearchParams();
   const list = useAsync(() => scholarsApi.list(project!.id), [project?.id]);
+  // Preview only: the server assigns the definitive number when the report is created.
+  const used = useAsync(() => reportsApi.usedNumbers(project!.id), [project?.id]);
+  const [issued, setIssued] = useState(today());
   const [selected, setSelected] = useState<Set<string>>(() => new Set(search.get('scholar') ? [search.get('scholar')!] : []));
   const [params, setParams] = useState<Params | null>(null), [details, setDetails] = useState<Detail[] | null>(null), [loadError, setLoadError] = useState('');
   const [runs, setRuns] = useState<Record<string, Run>>({}), [running, setRunning] = useState(false);
@@ -63,6 +74,7 @@ export default function Generate() {
       catch (x) { setRuns((r) => ({ ...r, [id]: { state: 'failed', error: errorText(x) } })); }
     }
     setRunning(false);
+    void used.reload();
   }
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const failed = Object.entries(runs).filter(([, r]) => r.state === 'failed').map(([id]) => id);
@@ -77,8 +89,8 @@ export default function Generate() {
           <div className="grid-form" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))' }}>
             <label className="field">Período inicial<input name="periodStart" type="date" required defaultValue={params?.periodStart} /></label>
             <label className="field">Período final<input name="periodEnd" type="date" required defaultValue={params?.periodEnd} /></label>
-            <label className="field">RTP nº<input name="number" required placeholder="01/2026" defaultValue={params?.number} /><small>Numeração por bolsista</small></label>
-            <label className="field">Data de emissão<input name="issuedOn" type="date" required defaultValue={params?.issuedOn ?? today()} /></label>
+            <label className="field">Data de emissão<input name="issuedOn" type="date" required value={issued} onChange={(e) => setIssued(e.target.value)} /></label>
+            <div className="field">Numeração do RTP<span className="next-number">{used.data ? numberPreview(used.data, issued, selected.size) : 'calculando…'}</span><small>Automática e única no projeto; números de RTPs excluídos não são reutilizados.</small></div>
             <label className="field">Extensão do texto<select name="lengthMode" defaultValue={params?.lengthMode ?? 'standard'}><option value="concise">Sintético</option><option value="standard">Padrão institucional</option><option value="detailed">Detalhado</option></select></label>
           </div>
         </section>
@@ -110,10 +122,10 @@ export default function Generate() {
 
       {step === 3 && <div className="stack">
         <section className="panel">
-          <div className="panel-head"><div><h2>Processamento</h2><p>{fmtPeriod(params!.periodStart, params!.periodEnd)}, RTP {params!.number}</p></div>{!running && failed.length > 0 && <button className="btn btn-sm" onClick={() => generate(failed)}><RotateCcw />Repetir {failed.length} com falha</button>}</div>
+          <div className="panel-head"><div><h2>Processamento</h2><p>{fmtPeriod(params!.periodStart, params!.periodEnd)}, numeração automática</p></div>{!running && failed.length > 0 && <button className="btn btn-sm" onClick={() => generate(failed)}><RotateCcw />Repetir {failed.length} com falha</button>}</div>
           {details!.map((d) => { const r = runs[d.scholar.id] ?? { state: 'waiting' }; return <div className="run-row" key={d.scholar.id}>
             <div>{d.scholar.full_name}{r.error && <small style={{ color: 'var(--alarm)' }}>{r.error}</small>}{r.report?.validations && <small>{r.report.validations.filter((v) => v.severity === 'critical').length} crítica(s), {r.report.validations.filter((v) => v.severity === 'attention').length} ponto(s) de atenção</small>}</div>
-            <span>{r.state === 'running' ? <span className="spin" aria-label="Gerando" /> : r.state === 'done' ? <Tag tone="ok"><Check size={12} />Gerado</Tag> : r.state === 'failed' ? <Tag tone="crit"><X size={12} />Falhou</Tag> : <Tag tone="mute">Na fila</Tag>}</span>
+            <span>{r.state === 'running' ? <span className="spin" aria-label="Gerando" /> : r.state === 'done' ? <Tag tone="ok"><Check size={12} />RTP {r.report?.number}</Tag> : r.state === 'failed' ? <Tag tone="crit"><X size={12} />Falhou</Tag> : <Tag tone="mute">Na fila</Tag>}</span>
             <span>{r.report && <NavLink className="btn btn-sm" to={`/reports/${r.report.id}`}>Revisar</NavLink>}</span>
           </div>; })}
         </section>

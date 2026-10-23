@@ -146,6 +146,10 @@ export const reports = {
   regenerate: (id: string, section: keyof ReportContent['sections']) => route<{ version: number; content: ReportContent }>(`/reports/${id}/regenerate`, { method: 'POST', body: JSON.stringify({ section }) }),
   submit: async (id: string) => unwrap(await db.from('reports').update({ status: 'pending_review' }).eq('id', id)),
   approve: (id: string) => route(`/reports/${id}/approve`, { method: 'POST' }),
+  reopen: (id: string, reason: string) => route(`/reports/${id}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  remove: (id: string, reason: string) => route(`/reports/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+  usedNumbers: async (projectId: string): Promise<string[]> =>
+    unwrap<Array<{ number: string }>>(await db.from('reports').select('number').eq('project_id', projectId)).map((r) => r.number),
   resolve: (id: string, validationId: string, note: string) => route<Validation>(`/reports/${id}/validations`, { method: 'PATCH', body: JSON.stringify({ validationId, note }) })
 };
 
