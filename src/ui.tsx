@@ -65,14 +65,18 @@ export function Notice({ tone = 'info', title, children }: { tone?: Tone; title?
 
 export function Drawer({ open, title, description, onClose, children }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>('input,select,textarea,button')?.focus();
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const content = ref.current?.querySelector<HTMLElement>('.drawer-body');
+    const first = content?.querySelector<HTMLElement>('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])');
+    (first ?? ref.current?.querySelector<HTMLElement>('button:not([disabled])'))?.focus();
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };
     window.addEventListener('keydown', key);
     return () => { window.removeEventListener('keydown', key); prev?.focus(); };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return <div className="scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="drawer" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
