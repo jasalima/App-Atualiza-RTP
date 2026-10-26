@@ -18,6 +18,7 @@ O SDK `@neondatabase/neon-js` usa sua camada compatível com PostgREST. O endpoi
 
 - cadastro de projetos e bolsistas isolado por projeto;
 - gestão administrativa de usuários com senha temporária aleatória, troca obrigatória no primeiro acesso e revogação preservando o histórico;
+- instalação como aplicativo no iOS, Android, Windows, macOS, Linux e ChromeOS, com instruções adaptadas ao dispositivo;
 - importação privada de PDF/DOCX com SHA-256 e extração estruturada;
 - registro de execução separado do planejamento;
 - geração individual de RTP com recorte temporal e indicação de lacunas;
@@ -61,6 +62,10 @@ npm run dev
 ```
 
 Acesse `http://localhost:3000`. Não existem credenciais padrão no código.
+
+## Instalação nos dispositivos
+
+Em produção, use **Instalar aplicativo** na tela de entrada ou no menu lateral. Quando o navegador disponibiliza o prompt nativo, a instalação começa diretamente; nos demais casos, a aplicação mostra o procedimento específico do dispositivo. O modo instalado exige internet para consultar ou alterar dados e não mantém páginas autenticadas em cache.
 
 ## Validação
 

@@ -9,7 +9,14 @@ const doc = Tinos({ subsets: ['latin', 'latin-ext'], weight: ['400', '700'], sty
 
 export const metadata: Metadata = {
   title: 'RTP Inteligente · FAPTO',
-  description: 'Gestão e geração rastreável de Relatórios Técnicos Parciais.'
+  description: 'Gestão e geração rastreável de Relatórios Técnicos Parciais.',
+  applicationName: 'RTP Inteligente',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [{ url: '/pwa/192', sizes: '192x192', type: 'image/png' }, { url: '/pwa/512', sizes: '512x512', type: 'image/png' }],
+    apple: [{ url: '/pwa/180', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: { capable: true, title: 'RTP Inteligente', statusBarStyle: 'black-translucent' },
 };
 
 // viewport-fit=cover lets the phone tab bar sit above the home indicator (safe-area insets).

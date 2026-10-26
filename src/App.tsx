@@ -16,6 +16,7 @@ import Generate from './screens/Generate';
 import Reports from './screens/Reports';
 import ReportEditor from './screens/ReportEditor';
 import SettingsPage from './screens/Settings';
+import { InstallAppButton } from './pwa';
 
 function App() {
   const session = neon.auth.useSession();
@@ -104,6 +105,7 @@ function Login() {
         <label className="field">Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></label>
         {error && <Notice tone="crit">{error}</Notice>}
         <button className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
+        <InstallAppButton className="btn btn-block" />
       </form>
     </section>
   </main>;
@@ -160,6 +162,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
         </div>)}
         <div className="rail-foot">
           {user.role === 'admin' && <NavLink to="/settings"><Settings />Configurações</NavLink>}
+          <InstallAppButton />
           <button onClick={logout}><LogOut />Sair</button>
           <div className="rail-user"><div><b>{user.name}</b><span>{roleLabel[user.role!]}</span></div></div>
         </div>
