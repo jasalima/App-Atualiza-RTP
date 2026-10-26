@@ -1,7 +1,7 @@
 'use client';
 
 import { neon } from './neon';
-import type { Execution, ImportResult, PlanItem, Project, Report, ReportContent, Scholar, ScholarOverview, Validation, WorkPlan } from './types';
+import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
 
@@ -155,4 +155,15 @@ export const reports = {
 
 export const settings = {
   status: () => route<{ database: boolean; auth: boolean; dataApi: boolean; storage: boolean; bucket: string; ai: { provider: string; model: string | null; configured: boolean } }>('/settings/status')
+};
+
+export const users = {
+  me: () => route<User>('/users/me'),
+  list: () => route<ManagedUser[]>('/users'),
+  create: (body: { name: string; email: string; role: Exclude<Role, 'admin'>; projectId: string; scholarId?: string | null }) =>
+    route<{ userId: string; temporaryPassword: string }>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  setStatus: (id: string, action: 'revoke' | 'restore') =>
+    route<{ success: boolean }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action }) }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    route<{ success: boolean }>('/users/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
 };

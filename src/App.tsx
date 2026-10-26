@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
 import { neon, resetDataApiToken } from './neon';
-import { projects as projectsApi } from './api';
+import { projects as projectsApi, users } from './api';
 import type { Project, Role, User } from './types';
 import { Notice, Pivot, ScopeContext, Skeleton, ToastProvider, errorText, roleLabel, useScope } from './ui';
 import Dashboard from './screens/Dashboard';
@@ -17,8 +17,6 @@ import Reports from './screens/Reports';
 import ReportEditor from './screens/ReportEditor';
 import SettingsPage from './screens/Settings';
 
-const rank: Record<Role, number> = { admin: 0, coordinator: 1, scholar: 2 };
-
 function App() {
   const session = neon.auth.useSession();
   const [user, setUser] = useState<User | null>(null);
@@ -26,18 +24,36 @@ function App() {
     const authUser = session.data?.user;
     resetDataApiToken();
     if (!authUser) { setUser(null); return; }
-    // A person may hold several memberships; the strongest role defines the interface.
-    neon.from('user_project_access').select('role,project_id,scholar_id').eq('auth_user_id', authUser.id)
-      .then(({ data }: any) => {
-        const best = [...(data ?? [])].sort((a: any, b: any) => rank[a.role as Role] - rank[b.role as Role])[0];
-        setUser({ id: authUser.id, name: authUser.name || authUser.email, email: authUser.email, role: best?.role ?? null, projectId: best?.project_id ?? null, scholarId: best?.scholar_id ?? null });
-      });
+    users.me().then(setUser).catch(() => setUser({id:authUser.id,name:authUser.name||authUser.email,email:authUser.email,role:null,projectId:null}));
   }, [session.data]);
   const logout = useCallback(() => { resetDataApiToken(); void neon.auth.signOut(); setUser(null); }, []);
   if (session.isPending || (session.data?.user && !user)) return <div className="splash"><Pivot sectors={['on', 'on', 'warn', 'off', 'off']} size={64} animate label="Carregando" /></div>;
   if (!user) return <Login />;
+  if (user.mustChangePassword) return <ChangePassword user={user} logout={logout} onDone={()=>setUser({...user,mustChangePassword:false})} />;
   if (!user.role) return <NoAccess user={user} logout={logout} />;
   return <ToastProvider><Shell user={user} logout={logout} /></ToastProvider>;
+}
+
+function ChangePassword({user,logout,onDone}:{user:User;logout:()=>void;onDone:()=>void}){
+  const [currentPassword,setCurrentPassword]=useState(''),[newPassword,setNewPassword]=useState(''),[confirm,setConfirm]=useState('');
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+  async function submit(e:FormEvent){
+    e.preventDefault();setError('');
+    if(newPassword!==confirm){setError('A confirmação não corresponde à nova senha.');return;}
+    setBusy(true);
+    try{await users.changePassword(currentPassword,newPassword);resetDataApiToken();onDone();}
+    catch(x){setError(errorText(x));}finally{setBusy(false);}
+  }
+  return <main className="login-form" style={{minHeight:'100vh'}}><form onSubmit={submit} style={{width:'min(460px,100%)'}}>
+    <Pivot sectors={['on','warn','off','off','off']} size={54}/>
+    <div><h2>Crie sua senha definitiva</h2><p className="lead">Olá, {user.name}. Por segurança, a senha temporária só pode ser usada neste primeiro acesso.</p></div>
+    <label className="field">Senha temporária<input type="password" autoComplete="current-password" value={currentPassword} onChange={(e)=>setCurrentPassword(e.target.value)} required minLength={8}/></label>
+    <label className="field">Nova senha<input type="password" autoComplete="new-password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} required minLength={12}/><small>Use 12 ou mais caracteres, com maiúscula, minúscula, número e símbolo.</small></label>
+    <label className="field">Confirmar nova senha<input type="password" autoComplete="new-password" value={confirm} onChange={(e)=>setConfirm(e.target.value)} required minLength={12}/></label>
+    {error&&<Notice tone="crit">{error}</Notice>}
+    <button className="btn btn-primary btn-block" disabled={busy}>{busy?'Salvando…':'Trocar senha e continuar'}</button>
+    <button className="btn btn-block" type="button" onClick={logout}>Sair</button>
+  </form></main>;
 }
 
 // Aerial view of an irrigation polo: centre-pivot fields of different ages and sizes.

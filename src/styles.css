@@ -383,6 +383,11 @@ th.crono-act{vertical-align:bottom;color:var(--mute)}
 .checks li:last-child{border-bottom:0}
 .checks small{display:block;color:var(--mute)}
 code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:3px}
+.users-ledger td:first-child b,.users-ledger td:first-child small{display:block}
+.users-ledger td:first-child small{color:var(--mute);margin-top:2px}
+.credential{display:grid;gap:6px;padding:18px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--line-soft)}
+.credential span{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.credential code{font-size:18px;letter-spacing:.04em;overflow-wrap:anywhere;background:var(--sheet);padding:10px}
 
 /* Responsive -------------------------------------------------------------- */
 @media (max-width:1100px){

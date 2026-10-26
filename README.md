@@ -17,6 +17,7 @@ O SDK `@neondatabase/neon-js` usa sua camada compatível com PostgREST. O endpoi
 ## Funcionalidades
 
 - cadastro de projetos e bolsistas isolado por projeto;
+- gestão administrativa de usuários com senha temporária aleatória, troca obrigatória no primeiro acesso e revogação preservando o histórico;
 - importação privada de PDF/DOCX com SHA-256 e extração estruturada;
 - registro de execução separado do planejamento;
 - geração individual de RTP com recorte temporal e indicação de lacunas;
@@ -47,9 +48,11 @@ npm run db:migrate
 O arquivo [neon.ts](./neon.ts) declara Neon Auth, Data API e o bucket privado `rtp-private`. Confira os nomes gerados no `.env.local` e ajuste-os conforme [.env.example](./.env.example).
 
 1. Crie a primeira conta pela tela de acesso/Neon Auth.
-2. Cadastre o projeto inicial pelo SQL Editor ou migração administrativa.
-3. Defina `NEON_ADMIN_USER_ID` e `NEON_ADMIN_PROJECT_ID` localmente.
-4. Execute `npm run db:seed` para associar essa conta como administradora.
+2. Defina `NEON_ADMIN_USER_ID`, `NEON_ADMIN_EMAIL` e `NEON_ADMIN_NAME` apenas no terminal local.
+3. Execute `npm run db:seed` para associar essa conta como administradora global da aplicação.
+4. Entre como administradora, cadastre o projeto inicial e use **Configurações > Cadastrar usuário** para criar os demais acessos.
+
+As variáveis `NEON_ADMIN_*` são usadas somente pelo comando de bootstrap e não precisam ser cadastradas na Vercel. A senha temporária de cada novo usuário é exibida uma única vez; o banco guarda apenas a exigência de troca. Contas revogadas perdem imediatamente o acesso aos dados pelas políticas RLS, sem apagar seu histórico institucional.
 
 ## Desenvolvimento
 
