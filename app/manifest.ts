@@ -15,9 +15,9 @@ export default function manifest():MetadataRoute.Manifest{
     orientation:'any',
     categories:['business','productivity'],
     icons:[
-      {src:'/pwa/192',sizes:'192x192',type:'image/png',purpose:'any'},
-      {src:'/pwa/512',sizes:'512x512',type:'image/png',purpose:'any'},
-      {src:'/pwa/512',sizes:'512x512',type:'image/png',purpose:'maskable'},
+      {src:'/app-icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},
+      {src:'/app-icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},
+      {src:'/app-icon-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'},
     ],
     shortcuts:[
       {name:'Visão geral',short_name:'Início',url:'/'},
