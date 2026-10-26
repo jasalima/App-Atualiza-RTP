@@ -63,12 +63,22 @@ export async function POST(request:Request){
         : sql`SELECT 1`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata)
           VALUES(${admin.id},${value.projectId}::uuid,'create_user','managed_users',${createdUserId},
-            jsonb_build_object('email',${value.email},'role',${value.role}))`,
+            jsonb_build_object('email',${value.email}::text,'role',${value.role}::text))`,
     ]);
     return Response.json({userId:createdUserId,temporaryPassword:password},{status:201,headers:{'Cache-Control':'no-store'}});
   } catch(error) {
-    // If the database transaction fails after Auth creation, the account remains
-    // harmlessly without a membership; RLS grants it no application data.
+    // Compensate an Auth-first signup when the application transaction fails.
+    // The guard prevents removing an account whose managed record was committed.
+    if(createdUserId){
+      try{
+        await sql`DELETE FROM neon_auth."user" auth_user
+          WHERE auth_user.id=${createdUserId}::uuid
+            AND NOT EXISTS (
+              SELECT 1 FROM managed_users managed
+              WHERE managed.auth_user_id=${createdUserId}
+            )`;
+      }catch{/* Preserve the original creation error. */}
+    }
     return routeError(error);
   }
 }
