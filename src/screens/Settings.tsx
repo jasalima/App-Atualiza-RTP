@@ -25,7 +25,7 @@ export default function SettingsPage() {
       const result=await users.create({...form,scholarId:form.role==='scholar'?form.scholarId:null});
       setCredential({email:form.email,password:result.temporaryPassword});
       await managed.reload();
-      toast('Usuário criado. Entregue a senha temporária por um canal seguro.');
+      toast(result.whatsappProvisioned ? 'Usuário criado com conexão WhatsApp individual preparada. Entregue a senha temporária por um canal seguro.' : 'Usuário criado. A conexão WhatsApp pode ser preparada em Diárias e passagens. Entregue a senha temporária por um canal seguro.');
     }catch(x){setFormError((x as Error).message);}finally{setBusy(false);}
   }
   async function status(user:ManagedUser){

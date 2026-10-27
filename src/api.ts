@@ -1,6 +1,7 @@
 'use client';
 
 import { neon } from './neon';
+import { requestJson } from './request-json';
 import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
@@ -20,12 +21,7 @@ function unwrap<T>({ data, error }: { data: T; error?: { message: string } | nul
 
 // Route Handlers: transactional, document and file operations that need server credentials.
 export async function route<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  const response = await fetch(`/api${path}`, { ...options, headers, credentials: 'include' });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok && !Array.isArray(data)) throw new Error(data.error || 'Não foi possível concluir a operação.');
-  return data as T;
+  return requestJson<T>(path, options);
 }
 
 export async function download(path: string, filename: string) {
@@ -41,12 +37,13 @@ const projectColumns = (x: Record<string, any>) => ({
   general_objective: x.generalObjective ?? '', city: x.city, status: x.status ?? 'active'
 });
 const scholarColumns = (x: Record<string, any>) => ({
+  ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}),
   full_name: x.fullName, role_area: x.roleArea ?? '', scholarship_type: x.scholarshipType ?? '',
   starts_on: x.startsOn, ends_on: x.endsOn, status: x.status ?? 'active', notes: x.notes ?? ''
 });
 
 export const projects = {
-  list: async (): Promise<Project[]> => unwrap(await db.from('projects').select('*').is('deleted_at', null).order('created_at', { ascending: false })),
+  list: (): Promise<Project[]> => route<Project[]>('/projects', { cache: 'no-store' }),
   create: async (x: Record<string, any>): Promise<Project> => unwrap(await db.from('projects').insert(projectColumns(x)).select().single()),
   update: async (id: string, x: Record<string, any>): Promise<Project> => unwrap(await db.from('projects').update(projectColumns(x)).eq('id', id).select().single())
 };
@@ -161,7 +158,7 @@ export const users = {
   me: () => route<User>('/users/me'),
   list: () => route<ManagedUser[]>('/users'),
   create: (body: { name: string; email: string; role: Exclude<Role, 'admin'>; projectId: string; scholarId?: string | null }) =>
-    route<{ userId: string; temporaryPassword: string }>('/users', { method: 'POST', body: JSON.stringify(body) }),
+    route<{ userId: string; temporaryPassword: string; whatsappProvisioned: boolean }>('/users', { method: 'POST', body: JSON.stringify(body) }),
   setStatus: (id: string, action: 'revoke' | 'restore') =>
     route<{ success: boolean }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action }) }),
   changePassword: (currentPassword: string, newPassword: string) =>

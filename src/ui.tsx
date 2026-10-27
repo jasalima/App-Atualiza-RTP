@@ -126,11 +126,13 @@ export function nextStep(s: Pick<ScholarOverview, 'plan' | 'executions' | 'lates
 
 export function useAsync<T>(load: () => Promise<T>, deps: unknown[]) {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true });
+  const sequence = useRef(0);
   const run = useCallback(() => {
-    setState((s) => ({ ...s, loading: true }));
-    return load().then((data) => setState({ data, loading: false }), (e) => setState({ error: errorText(e), loading: false }));
+    const request = ++sequence.current;
+    setState((s) => ({ ...s, error: undefined, loading: true }));
+    return Promise.resolve().then(load).then((data) => { if (request === sequence.current) setState({ data, loading: false }); }, (e) => { if (request === sequence.current) setState({ error: errorText(e), loading: false }); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  useEffect(() => { void run(); }, [run]);
-  return { ...state, reload: run, set: (data: T) => setState({ data, loading: false }) };
+  useEffect(() => { void run(); return () => { sequence.current++; }; }, [run]);
+  return { ...state, reload: run, set: (data: T) => { sequence.current++; setState({ data, loading: false }); } };
 }

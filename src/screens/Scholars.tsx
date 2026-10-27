@@ -19,6 +19,8 @@ export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar |
   return <form className="grid-form" onSubmit={save}>
     <label className="field span-2">Nome completo<input name="fullName" required defaultValue={scholar?.full_name} /><small>Use o nome exatamente como aparece no Plano de Trabalho: é por ele que a importação identifica o bolsista.</small></label>
     <label className="field">Função ou área de atuação<input name="roleArea" defaultValue={scholar?.role_area} /></label>
+    <label className="field">Telefone / WhatsApp<input name="phone" type="tel" placeholder="5563999999999" defaultValue={scholar?.phone} /><small>Informe DDI e DDD para envio de documentos.</small></label>
+    <label className="field">E-mail<input name="email" type="email" defaultValue={scholar?.email} /></label>
     <label className="field">Modalidade da bolsa<input name="scholarshipType" defaultValue={scholar?.scholarship_type} /></label>
     <label className="field">Vigência inicial<input name="startsOn" type="date" required defaultValue={scholar?.starts_on} /></label>
     <label className="field">Vigência final<input name="endsOn" type="date" required defaultValue={scholar?.ends_on} /></label>

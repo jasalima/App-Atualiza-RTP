@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireAdmin, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { createAuthAccount, temporaryPassword } from '@/lib/users';
+import { provisionWhatsApp } from '@/lib/whatsapp-connections';
 
 const input=z.object({
   name:z.string().trim().min(3).max(120),
@@ -65,7 +66,12 @@ export async function POST(request:Request){
           VALUES(${admin.id},${value.projectId}::uuid,'create_user','managed_users',${createdUserId},
             jsonb_build_object('email',${value.email}::text,'role',${value.role}::text))`,
     ]);
-    return Response.json({userId:createdUserId,temporaryPassword:password},{status:201,headers:{'Cache-Control':'no-store'}});
+    let whatsappProvisioned = false;
+    if (process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY) {
+      try { await provisionWhatsApp(value.projectId, createdUserId); whatsappProvisioned = true; }
+      catch { /* Account is committed; coordination can retry provisioning without creating another account. */ }
+    }
+    return Response.json({userId:createdUserId,temporaryPassword:password,whatsappProvisioned},{status:201,headers:{'Cache-Control':'no-store'}});
   } catch(error) {
     // Compensate an Auth-first signup when the application transaction fails.
     // The guard prevents removing an account whose managed record was committed.

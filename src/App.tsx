@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
-import { neon, resetDataApiToken } from './neon';
+import { neon, prepareDataApi, resetDataApiToken } from './neon';
 import { projects as projectsApi, users } from './api';
 import type { Project, Role, User } from './types';
 import { Notice, Pivot, ScopeContext, Skeleton, ToastProvider, errorText, roleLabel, useScope } from './ui';
@@ -16,23 +16,34 @@ import Generate from './screens/Generate';
 import Reports from './screens/Reports';
 import ReportEditor from './screens/ReportEditor';
 import SettingsPage from './screens/Settings';
+import TravelAccountability from './screens/TravelAccountability';
 import { InstallAppButton } from './pwa';
 
 function App() {
   const session = neon.auth.useSession();
   const [user, setUser] = useState<User | null>(null);
+  const [startupError, setStartupError] = useState(''), [startupAttempt, setStartupAttempt] = useState(0);
+  const authId = session.data?.user?.id;
   useEffect(() => {
-    const authUser = session.data?.user;
+    let active = true;
     resetDataApiToken();
-    if (!authUser) { setUser(null); return; }
-    users.me().then(setUser).catch(() => setUser({id:authUser.id,name:authUser.name||authUser.email,email:authUser.email,role:null,projectId:null}));
-  }, [session.data]);
+    setUser(null); setStartupError('');
+    if (!authId) return;
+    void (async () => {
+      const account = await users.me();
+      if (!active) return;
+      if (account.role && !account.mustChangePassword) await prepareDataApi();
+      if (active) setUser(account);
+    })().catch(error => { if (active) setStartupError(errorText(error)); });
+    return () => { active = false; };
+  }, [authId, startupAttempt]);
   const logout = useCallback(() => { resetDataApiToken(); void neon.auth.signOut(); setUser(null); }, []);
-  if (session.isPending || (session.data?.user && !user)) return <div className="splash"><Pivot sectors={['on', 'on', 'warn', 'off', 'off']} size={64} animate label="Carregando" /></div>;
-  if (!user) return <Login />;
+  if (authId && startupError) return <div className="login-form" style={{minHeight:'100vh'}}><div className="stack"><Notice tone="crit" title="Não foi possível carregar sua conta">{startupError}</Notice><button className="btn btn-primary" onClick={() => { setStartupError(''); setStartupAttempt(n => n + 1); }}>Tentar novamente</button><button className="btn" onClick={logout}>Sair</button></div></div>;
+  if (session.isPending || (authId && user?.id !== authId)) return <div className="splash" role="status"><Pivot sectors={['on', 'on', 'warn', 'off', 'off']} size={64} animate label="Carregando sua conta" /></div>;
+  if (!authId || !user) return <Login />;
   if (user.mustChangePassword) return <ChangePassword user={user} logout={logout} onDone={()=>setUser({...user,mustChangePassword:false})} />;
   if (!user.role) return <NoAccess user={user} logout={logout} />;
-  return <ToastProvider><Shell user={user} logout={logout} /></ToastProvider>;
+  return <ToastProvider><Shell key={user.id} user={user} logout={logout} /></ToastProvider>;
 }
 
 function ChangePassword({user,logout,onDone}:{user:User;logout:()=>void;onDone:()=>void}){
@@ -130,22 +141,24 @@ const tabsScholar: Tab[] = [['/', 'Início', LayoutGrid], ['/executions', 'Execu
 const groups = [
   { label: 'Preparar', items: [['/projects', 'Projetos', FolderKanban], ['/scholars', 'Bolsistas', Users], ['/plans', 'Planos de Trabalho', BookOpen]] },
   { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity]] },
-  { label: 'Relatar', items: [['/generate', 'Gerar RTP', Sparkles], ['/reports', 'Relatórios', FileText]] }
+  { label: 'Relatar', items: [['/generate', 'Gerar RTP', Sparkles], ['/reports', 'Relatórios', FileText]] },
+  { label: 'Prestação de contas', items: [['/travel', 'Diárias e passagens', FileText]] }
 ] as const;
 
 function Shell({ user, logout }: { user: User; logout: () => void }) {
   const [open, setOpen] = useState(false), [projects, setProjects] = useState<Project[]>([]), [loaded, setLoaded] = useState(false);
-  const [projectId, setProjectIdState] = useState<string>(() => { try { return localStorage.getItem('rtp.project') ?? ''; } catch { return ''; } });
+  const [projectId, setProjectIdState] = useState<string>(() => { try { return localStorage.getItem(`rtp.project.${user.id}`) ?? ''; } catch { return ''; } });
   const location = useLocation();
   useEffect(() => setOpen(false), [location.pathname]);
   const [loadError, setLoadError] = useState('');
   const reloadProjects = useCallback(async () => {
+    setLoaded(false); setLoadError('');
     try { setProjects(await projectsApi.list()); setLoadError(''); }
     catch (x) { setLoadError(errorText(x)); }
     finally { setLoaded(true); }
   }, []);
   useEffect(() => { void reloadProjects(); }, [reloadProjects]);
-  const setProjectId = (id: string) => { setProjectIdState(id); try { localStorage.setItem('rtp.project', id); } catch { /* sem armazenamento local */ } };
+  const setProjectId = (id: string) => { setProjectIdState(id); try { localStorage.setItem(`rtp.project.${user.id}`, id); } catch { /* sem armazenamento local */ } };
   const project = projects.find((p) => p.id === projectId) ?? projects.find((p) => p.id === user.projectId) ?? projects[0] ?? null;
   const canManage = user.role === 'admin' || user.role === 'coordinator';
   return <ScopeContext.Provider value={{ user, logout, projects, project, setProjectId, reloadProjects, canManage }}>
@@ -171,9 +184,9 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
         <div className="bar"><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu"><Menu /></button><b>RTP Inteligente</b></div>
         <main className="page">
           {/* Screens assume a project in focus: render them only after the list arrives. */}
-          {!loaded ? <Skeleton /> : loadError ? <Notice tone="crit" title="Não foi possível carregar os projetos">{loadError}</Notice> :
+          {!loaded ? <Skeleton /> : loadError ? <div className="stack"><Notice tone="crit" title="Não foi possível carregar os projetos">{loadError}</Notice><div><button className="btn btn-primary" onClick={() => void reloadProjects()}>Tentar novamente</button></div></div> :
             !project && location.pathname !== '/projects' && location.pathname !== '/settings' ? <FirstProject /> :
-            <Routes>
+            <Routes key={project?.id ?? 'no-project'}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/scholars" element={<Scholars />} />
@@ -185,6 +198,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="/reports" element={<Reports />} />
               <Route path="/reports/:id" element={<ReportEditor />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/travel" element={<TravelAccountability />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>}
         </main>
