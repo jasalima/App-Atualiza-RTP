@@ -17,6 +17,7 @@ import Reports from './screens/Reports';
 import ReportEditor from './screens/ReportEditor';
 import SettingsPage from './screens/Settings';
 import TravelAccountability from './screens/TravelAccountability';
+import TravelReportEditor from './screens/TravelReportEditor';
 import Connectivity from './screens/Connectivity';
 import Documents from './screens/Documents';
 import './connectivity.css';
@@ -203,6 +204,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="/reports/:id" element={<ReportEditor />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/travel" element={<TravelAccountability />} />
+              <Route path="/travel/:id" element={<TravelReportEditor />} />
               <Route path="/documents" element={<Documents />} />
               <Route path="/connectivity" element={<Connectivity />} />
               <Route path="*" element={<Navigate to="/" />} />

@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/reports/*/export/*': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/travel/export': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/travel/reports/*/export': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/travel/send': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/documents/send': ['./node_modules/pdfkit/js/data/**/*']
   },

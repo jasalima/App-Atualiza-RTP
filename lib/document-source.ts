@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { requireProject } from './authorize';
 import { sql } from './db';
-import { loadTravel, travelFile } from './travel';
+import { loadTravel, loadTravelReport, travelFile, travelFill } from './travel';
 import { readPrivateObject } from './storage';
 import { toDocx, toPdf } from '../server/services/export';
 import type { ReportContent } from '../server/types';
@@ -24,8 +24,14 @@ export async function loadDocumentSource(input: z.infer<typeof documentRequest>)
   };
   if (input.kind === 'travel') {
     if (input.format === 'original') throw Object.assign(new Error('Escolha PDF ou DOCX para o relatório de viagem.'), { status: 400 });
-    const { beneficiary } = await loadTravel(input.projectId, input.sourceId);
     const format = input.format;
+    // A filled travel report (travel_reports id) or, as before, the blank form of a member (scholar id).
+    const [filled] = await sql`SELECT 1 FROM travel_reports WHERE id=${input.sourceId}::uuid AND project_id=${input.projectId}::uuid AND deleted_at IS NULL`;
+    if (filled) {
+      const { beneficiary, report } = await loadTravelReport(input.projectId, input.sourceId);
+      return { session, version: null, label: `Formulário 26 — relatório de viagem${report.destination ? ` a ${report.destination}` : ''}`, makeFile: () => travelFile(beneficiary, format, travelFill(report)) };
+    }
+    const { beneficiary } = await loadTravel(input.projectId, input.sourceId);
     return { session, version: null, label: 'Formulário 26 — relatório de viagem', makeFile: () => travelFile(beneficiary, format) };
   }
   if (input.kind === 'rtp') {

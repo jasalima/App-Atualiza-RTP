@@ -453,3 +453,50 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
   .steps li{font-size:0;gap:0}
   .steps li[data-state=current]{font-size:13px;gap:8px}
 }
+
+/* Travel report entries (Formulário 26) ---------------------------------- */
+.travel-entries{display:grid;gap:8px}
+.travel-entry{display:grid;grid-template-columns:160px minmax(0,1fr) 36px;gap:8px;align-items:start}
+.travel-entry textarea{min-height:42px;height:42px;padding-top:9px}
+@media (max-width:860px){.travel-entry{grid-template-columns:1fr 36px}.travel-entry textarea{grid-column:1/-1;order:3}}
+
+/* Acervo de documentos */
+.doc-chips{display:flex;flex-wrap:wrap;gap:6px;padding:14px 18px 0}
+.chip.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.7}
+.doc-name{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;text-align:left;color:var(--ink);cursor:pointer;min-width:0}
+.doc-name:hover{text-decoration:none}
+.doc-name:hover b{color:var(--water);text-decoration:underline;text-underline-offset:3px}
+.doc-name svg{flex:none;width:20px;height:20px;color:var(--ink-2)}
+.doc-name span{display:flex;flex-direction:column;min-width:0}
+.doc-name b{font-weight:600;overflow-wrap:anywhere}
+.doc-name small{color:var(--mute);font-size:12.5px;overflow-wrap:anywhere}
+.row-actions{display:flex;gap:2px;justify-content:flex-end;align-items:center}
+.upload-list{display:grid;gap:12px;margin-top:14px}
+.upload-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;background:var(--sheet)}
+.upload-item[data-state=done]{border-color:var(--pivot);background:var(--pivot-wash)}
+.upload-item[data-state=failed]{border-color:var(--alarm)}
+.upload-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.upload-head b{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
+.upload-head small{color:var(--mute);white-space:nowrap}
+.progress{height:4px;background:var(--line-soft);border-radius:2px;overflow:hidden;margin-top:10px}
+.progress i{display:block;height:100%;background:var(--water);transition:width .2s}
+.upload-item[data-state=done] .progress i{background:var(--pivot)}
+.ok-text{display:block;margin-top:6px;color:var(--pivot);font-weight:600}
+.apply-all{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;font-size:13.5px;color:var(--ink-2)}
+.hash{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.versions.compact li{padding:10px 0}
+.drawer-sub{font-family:var(--display);font-stretch:80%;font-size:17px;font-weight:600;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.audit-list{list-style:none;margin:0;padding:0;font-size:13.5px}
+.audit-list li{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+.audit-list time{color:var(--mute);font-variant-numeric:tabular-nums;font-size:12.5px}
+@media (max-width:860px){
+  .doc-table thead{display:none}
+  .doc-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+  .doc-table td{border:0;padding:0}
+  .doc-table td:first-child{grid-column:1/-1}
+  .doc-table td:nth-child(5){display:none}
+  .doc-table td:last-child{grid-column:1/-1}
+  .row-actions{justify-content:flex-start}
+  .audit-list li{grid-template-columns:1fr;gap:2px}
+}

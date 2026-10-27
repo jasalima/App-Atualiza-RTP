@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-const mocks = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn(), read: vi.fn(), pdf: vi.fn(), docx: vi.fn(), travel: vi.fn(), travelFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn(), read: vi.fn(), pdf: vi.fn(), docx: vi.fn(), travel: vi.fn(), travelFile: vi.fn(), travelReport: vi.fn() }));
 vi.mock('../lib/authorize', () => ({ requireProject: mocks.access }));
 vi.mock('../lib/db', () => ({ sql: mocks.query }));
 vi.mock('../lib/storage', () => ({ readPrivateObject: mocks.read }));
-vi.mock('../lib/travel', () => ({ loadTravel: mocks.travel, travelFile: mocks.travelFile }));
+vi.mock('../lib/travel', () => ({ loadTravel: mocks.travel, travelFile: mocks.travelFile, loadTravelReport: mocks.travelReport, travelFill: (r: {destination: string}) => ({ destination: r.destination }) }));
 vi.mock('../server/services/export', () => ({ toPdf: mocks.pdf, toDocx: mocks.docx }));
 import { loadDocumentSource, MAX_DOCUMENT_BYTES, recipientNumber, safeFileName } from '../lib/document-source';
 beforeEach(() => { Object.values(mocks).forEach(mock => mock.mockReset()); mocks.access.mockResolvedValue({ user: {id:'sender'},role:'coordinator',scholarId:null }); });
@@ -42,12 +42,24 @@ describe('application document authorization', () => {
     expect((await loadDocumentSource(input)).label).toContain('prévia');
   });
   it('keeps travel exports on their beneficiary and requested format', async () => {
+    mocks.query.mockResolvedValue([]);
     mocks.travel.mockResolvedValue({beneficiary:{name:'Beneficiary'}});
     mocks.travelFile.mockResolvedValue({buffer:Buffer.from('docx'),mime:'docx',filename:'travel.docx'});
     const source = await loadDocumentSource({...input,kind:'travel',format:'docx'});
     await source.makeFile();
     expect(mocks.travel).toHaveBeenCalledWith('project-a','source-a');
     expect(mocks.travelFile).toHaveBeenCalledWith({name:'Beneficiary'},'docx');
+  });
+  it('sends a filled travel report with its own data, through the scoped loader', async () => {
+    mocks.query.mockResolvedValue([{'?column?':1}]);
+    mocks.travelReport.mockResolvedValue({beneficiary:{name:'Beneficiary'},report:{destination:'Lagoa da Confusão/TO'}});
+    mocks.travelFile.mockResolvedValue({buffer:Buffer.from('pdf'),mime:'pdf',filename:'travel.pdf'});
+    const source = await loadDocumentSource({...input,kind:'travel',format:'pdf'});
+    await source.makeFile();
+    expect(mocks.travelReport).toHaveBeenCalledWith('project-a','source-a');
+    expect(mocks.travel).not.toHaveBeenCalled();
+    expect(mocks.travelFile).toHaveBeenCalledWith({name:'Beneficiary'},'pdf',{destination:'Lagoa da Confusão/TO'});
+    expect(source.label).toContain('Lagoa da Confusão/TO');
   });
 });
 describe('private stored documents', () => {

@@ -2,7 +2,7 @@
 
 import { neon } from './neon';
 import { requestJson } from './request-json';
-import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, User, Validation, WorkPlan } from './types';
+import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, ProjectDocument, DocumentDetail, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
 
@@ -148,6 +148,50 @@ export const reports = {
   usedNumbers: async (projectId: string): Promise<string[]> =>
     unwrap<Array<{ number: string }>>(await db.from('reports').select('number').eq('project_id', projectId)).map((r) => r.number),
   resolve: (id: string, validationId: string, note: string) => route<Validation>(`/reports/${id}/validations`, { method: 'PATCH', body: JSON.stringify({ validationId, note }) })
+};
+
+// Project document library. Files go straight to the private bucket through a
+// five-minute signed URL (no 4.5 MB function limit); the server then checks the
+// stored object and registers it with its SHA-256.
+export type DocumentMeta = { title: string; category: string; description: string; scholarId: string | null; validUntil: string | null };
+export const documents = {
+  list: (projectId: string) => route<ProjectDocument[]>(`/documents?projectId=${projectId}`),
+  detail: (projectId: string, id: string) => route<DocumentDetail>(`/documents/${id}?projectId=${projectId}`),
+  update: (projectId: string, id: string, meta: DocumentMeta) => route<ProjectDocument>(`/documents/${id}?projectId=${projectId}`, { method: 'PATCH', body: JSON.stringify(meta) }),
+  remove: (projectId: string, id: string, reason: string) => route(`/documents/${id}?projectId=${projectId}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+  open: async (projectId: string, id: string, mode: 'view' | 'download') => {
+    // The tab is opened before awaiting so popup blockers accept it.
+    const tab = mode === 'view' ? window.open('about:blank', '_blank') : null;
+    try {
+      const { url } = await route<{ url: string }>(`/documents/${id}/download?projectId=${projectId}&mode=${mode}`);
+      if (tab) tab.location.href = url; else window.location.assign(url);
+    } catch (e) { tab?.close(); throw e; }
+  },
+  upload: async (projectId: string, file: File, meta: DocumentMeta, replacesId: string | null, onProgress: (fraction: number) => void) => {
+    const contentType = file.type || 'application/octet-stream';
+    const signed = await route<{ key: string; url: string }>('/storage/sign', { method: 'POST', body: JSON.stringify({ projectId, fileName: file.name, contentType }) });
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', signed.url); xhr.setRequestHeader('Content-Type', contentType);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error('O armazenamento recusou o arquivo.')));
+      xhr.onerror = () => reject(new Error('Falha de conexão durante o envio do arquivo.'));
+      xhr.send(file);
+    });
+    const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return route<ProjectDocument>('/documents', { method: 'POST', body: JSON.stringify({ ...meta, projectId, key: signed.key, originalName: file.name, mimeType: contentType, size: file.size, sha256, replacesId }) });
+  }
+};
+
+// Filled Formulário 26 reports (prestação de contas de diárias e passagens).
+export const travelReports = {
+  list: (projectId: string) => route<TravelReport[]>(`/travel/reports?projectId=${projectId}`),
+  start: (projectId: string, scholarId: string) => route<TravelReport>('/travel/reports', { method: 'POST', body: JSON.stringify({ projectId, scholarId }) }),
+  get: (projectId: string, id: string) => route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`),
+  save: (projectId: string, id: string, body: Omit<TravelReport, 'id' | 'projectId' | 'scholarId' | 'scholarName' | 'createdAt' | 'updatedAt' | 'beneficiary'>) =>
+    route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`, { method: 'PUT', body: JSON.stringify(body) }),
+  remove: (projectId: string, id: string) => route(`/travel/reports/${id}?projectId=${projectId}`, { method: 'DELETE' }),
+  export: (projectId: string, id: string, format: 'pdf' | 'docx', filename: string) => download(`/travel/reports/${id}/export?projectId=${projectId}&format=${format}`, filename)
 };
 
 export const settings = {
