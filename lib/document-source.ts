@@ -32,8 +32,8 @@ export async function sender(session: Session, projectId: string) {
 export async function accountabilityMessage(session: Session, projectId: string, label: string) {
   const from = await sender(session, projectId);
   return [
-    `Olá, essa é uma mensagem automática, favor assinar o documento anexo ${label} e devolver em pdf.`,
-    'Lembramos que é necessário inserir o relatório de fotos conforme consta da seção "registro fotográfico".',
+    `Olá, esta mensagem é automática. Por favor, assine o documento ${label} e devolva-o em PDF.`,
+    'Lembramos que é necessário inserir o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico".',
     '',
     'Atenciosamente,',
     `*${from.name}*`,

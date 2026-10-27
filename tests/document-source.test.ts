@@ -67,8 +67,8 @@ describe('application document authorization', () => {
     mocks.travelReport.mockResolvedValue({beneficiary:{name:'Beneficiary'},report:{destination:'Lagoa da Confusão/TO'}});
     const source = await loadDocumentSource({...input,kind:'travel',format:'docx'});
     expect(await source.caption!()).toBe([
-      'Olá, essa é uma mensagem automática, favor assinar o documento anexo Formulário 26 — Relatório de Viagem a Lagoa da Confusão/TO e devolver em pdf.',
-      'Lembramos que é necessário inserir o relatório de fotos conforme consta da seção "registro fotográfico".',
+      'Olá, esta mensagem é automática. Por favor, assine o documento Formulário 26 — Relatório de Viagem a Lagoa da Confusão/TO e devolva-o em PDF.',
+      'Lembramos que é necessário inserir o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico".',
       '', 'Atenciosamente,', '*Jaasiel Nascimento Lima*', 'Assistente de Gestão do Projeto'
     ].join('\n'));
     mocks.query.mockResolvedValueOnce([]); mocks.travel.mockResolvedValue({beneficiary:{name:'Beneficiary'}});
