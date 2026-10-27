@@ -34,7 +34,7 @@ const INSTRUCTION = 'Descrever o objetivo da viagem e relatar os resultados, ass
 const SIGN_LINE = (label: string) => '_'.repeat(Math.max(12, 62 - label.length));
 
 // Measurements taken from the FAPTO Form 26 model (A4, Calibri 11, single spacing).
-const FONT = 'Calibri', SIZE = 22, LOGO_PT = 130;
+const FONT = 'Calibri', SIZE = 22, LOGO_PT = 137; // 4,84 cm, as embedded in the official FAPTO forms
 const MARGIN = { top: 620, bottom: 720, left: 1701, right: 1620 };
 const DATE_COL = 1690, ACT_COL = 7000, ROW_ENTRY = 1040, ROW_HEAD = 470;
 
