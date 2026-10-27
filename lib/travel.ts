@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { requireProject } from './authorize';
 import { sql } from './db';
-import { DEFAULT_ORIGIN, travelDocx, travelPdf, type TravelBeneficiary, type TravelFill } from '../server/services/travel-export';
+import { DEFAULT_DESTINATION, DEFAULT_ORIGIN, travelDocx, travelPdf, type TravelBeneficiary, type TravelFill } from '../server/services/travel-export';
 
 export const travelQuery = z.object({ projectId: z.string().uuid(), scholarId: z.string().uuid(), format: z.enum(['pdf', 'docx']) });
 export async function loadTravel(projectId: string, scholarId: string) {
@@ -15,7 +15,7 @@ export async function loadTravel(projectId: string, scholarId: string) {
 }
 export const travelEntry = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')), activity: z.string().max(2000) });
 export const travelReportUpdate = z.object({
-  origin: z.string().trim().max(160).transform((v) => v || DEFAULT_ORIGIN), destination: z.string().trim().max(160),
+  origin: z.string().trim().max(160).transform((v) => v || DEFAULT_ORIGIN), destination: z.string().trim().max(160).transform((v) => v || DEFAULT_DESTINATION),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), objective: z.string().max(8000),
   entries: z.array(travelEntry).max(60), status: z.enum(['draft', 'finalized'])

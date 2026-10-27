@@ -8,8 +8,8 @@ export type TravelFill = { origin?: string; destination?: string; departure?: st
 
 const br = (d?: string | null) => d ? d.slice(0, 10).split('-').reverse().join('/') : '____/____/________';
 const blank = '________________________________________________';
-/** Every trip of the project leaves from Palmas unless another origin is informed. */
-export const DEFAULT_ORIGIN = 'Palmas/TO';
+/** Usual route of the project's field trips; both ends stay editable in each report. */
+export const DEFAULT_ORIGIN = 'Palmas/TO', DEFAULT_DESTINATION = 'Lagoa da Confusão/TO';
 /** Brazilian mobile/landline layout: (63) 9 8402-8033 or (63) 3218-0000. */
 export function formatPhone(raw: string) {
   let d = String(raw ?? '').replace(/\D/g, '');
@@ -81,7 +81,7 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
       para([{ text: 'Projeto/convênio:', bold: true }, { text: ` ${b.project}` }]),
       para(`Função no projeto/convênio: ${b.role}`),
       lines(['IDENTIFICAÇÃO DO AFASTAMENTO'], { bold: true, after: 260 }),
-      lines([`Cidade/UF origem: ${fill.origin?.trim() || DEFAULT_ORIGIN}`, `Cidade/UF destino: ${fill.destination?.trim() || blank}`], { after: 280 }),
+      lines([`Cidade/UF origem: ${fill.origin?.trim() || DEFAULT_ORIGIN}`, `Cidade/UF destino: ${fill.destination?.trim() || DEFAULT_DESTINATION}`], { after: 280 }),
       para([{ text: `Saída: ${br(fill.departure)}` }, { text: `Retorno: ${br(fill.returnDate)}`, tab: true }], { tab: 2680 }),
       para(`Data do pagamento da diária: ${fill.payment ? br(fill.payment) : year ? `____/____/${year}` : br(null)}`, { after: 120 }),
       new Table({
@@ -128,7 +128,7 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     font(true).text('Projeto/convênio:', x, doc.y, { width: w, continued: true, lineGap: LG }); font().text(` ${b.project}`, { lineGap: LG }); doc.y += 10;
     text(`Função no projeto/convênio: ${b.role}`);
     text('IDENTIFICAÇÃO DO AFASTAMENTO', 13, { bold: true });
-    text(`Cidade/UF origem: ${fill.origin?.trim() || DEFAULT_ORIGIN}`, 0); text(`Cidade/UF destino: ${fill.destination?.trim() || blank}`, 14);
+    text(`Cidade/UF origem: ${fill.origin?.trim() || DEFAULT_ORIGIN}`, 0); text(`Cidade/UF destino: ${fill.destination?.trim() || DEFAULT_DESTINATION}`, 14);
     pair(`Saída: ${br(fill.departure)}`, `Retorno: ${br(fill.returnDate)}`, 134);
     const year = (fill.departure ?? '').slice(2, 4);
     text(`Data do pagamento da diária: ${fill.payment ? br(fill.payment) : year ? `____/____/${year}` : br(null)}`, 6);

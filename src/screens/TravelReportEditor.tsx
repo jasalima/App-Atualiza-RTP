@@ -66,7 +66,7 @@ export default function TravelReportEditor() {
           <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0 }}>
             <div className="grid-form">
               <label className="field">Cidade/UF de origem<input value={r.origin} onChange={(e) => set({ origin: e.target.value })} placeholder="Palmas/TO" /><small>Padrão: Palmas/TO</small></label>
-              <label className="field">Cidade/UF de destino<input value={r.destination} onChange={(e) => set({ destination: e.target.value })} placeholder="Lagoa da Confusão/TO" /></label>
+              <label className="field">Cidade/UF de destino<input value={r.destination} onChange={(e) => set({ destination: e.target.value })} placeholder="Lagoa da Confusão/TO" /><small>Padrão: Lagoa da Confusão/TO</small></label>
               <label className="field">Saída<input type="date" value={r.departureDate ?? ''} onChange={(e) => set({ departureDate: e.target.value || null })} /></label>
               <label className="field">Retorno<input type="date" value={r.returnDate ?? ''} min={r.departureDate ?? undefined} onChange={(e) => set({ returnDate: e.target.value || null })} /></label>
               <label className="field">Data do pagamento da diária<input type="date" value={r.paymentDate ?? ''} onChange={(e) => set({ paymentDate: e.target.value || null })} /><small>Opcional</small></label>
