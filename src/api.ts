@@ -34,7 +34,7 @@ export async function download(path: string, filename: string) {
 const projectColumns = (x: Record<string, any>) => ({
   title: x.title, executing_institution: x.executingInstitution, support_foundation: x.supportFoundation,
   coordinator: x.coordinator, starts_on: x.startsOn, ends_on: x.endsOn, description: x.description ?? '',
-  general_objective: x.generalObjective ?? '', city: x.city, status: x.status ?? 'active'
+  general_objective: x.generalObjective ?? '', city: x.city, status: x.status ?? 'active', agreement: x.agreement ?? ''
 });
 const scholarColumns = (x: Record<string, any>) => ({
   ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}),

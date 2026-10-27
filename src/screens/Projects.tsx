@@ -50,6 +50,7 @@ export default function Projects() {
     <Drawer open={!!editing} onClose={() => setEditing(null)} title={p ? 'Editar projeto' : 'Cadastrar projeto'} description="Esses dados aparecem no cabeçalho do Formulário 9.">
       <form className="grid-form" onSubmit={save} key={p?.id ?? 'new'}>
         <label className="field span-2">Título completo do projeto<textarea name="title" required minLength={5} defaultValue={p?.title ?? 'Elaboração do Plano de Desenvolvimento Sustentável do Polo de Agricultura Irrigada do Sudoeste do Tocantins'} style={{ minHeight: 64 }} /></label>
+        <label className="field span-2">Projeto/convênio (formulários FAPTO)<input name="agreement" defaultValue={p?.agreement ?? ''} placeholder="Ex.: 7886-6 “Título do projeto” - CONVÊNIO Nº 29/2026" /><small>Linha “Projeto/convênio” do Formulário 26. Em branco, usa o título do projeto.</small></label>
         <label className="field span-2">Instituição executora<input name="executingInstitution" required defaultValue={p?.executing_institution} /></label>
         <label className="field span-2">Fundação de apoio<input name="supportFoundation" defaultValue={p?.support_foundation ?? FAPTO} /></label>
         <label className="field">Coordenação geral<input name="coordinator" required defaultValue={p?.coordinator} /></label>

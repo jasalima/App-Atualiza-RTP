@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
-import { travelDocx, travelPdf, type TravelBeneficiary } from '../server/services/travel-export';
+import { formatPhone, travelDocx, travelPdf, type TravelBeneficiary } from '../server/services/travel-export';
 import { openCredential, sealCredential } from '../server/services/travel-credentials';
 
 const { access, query } = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn() }));
@@ -16,7 +16,9 @@ describe('Formulário 26', () => {
     const docx = await mammoth.extractRawText({ buffer: await travelDocx(b) });
     const pdf = await pdfParse(await travelPdf(b));
     for (const text of [docx.value, pdf.text]) {
-      for (const value of Object.values(b)) expect(text).toContain(value);
+      for (const value of [b.name, b.email, b.project, b.role]) expect(text).toContain(value);
+      expect(text).toContain('Contato telefônico: (63) 9 9999-0000');
+      expect(text).toContain('Projeto/convênio:');
       expect(text).toContain('FORMULÁRIO 26');
       expect(text).toContain('Cidade/UF origem: ____');
       expect(text).toContain('Cidade/UF destino: ____');
@@ -34,6 +36,20 @@ describe('Formulário 26', () => {
     const pdf = await pdfParse(await travelPdf({ ...b, name: 'Nome extenso '.repeat(10), project: 'Título institucional extenso '.repeat(12) }));
     expect(pdf.text).toContain('Assinatura do beneficiário:');
     expect(pdf.text).toContain('De acordo (Coordenador do projeto):');
+  });
+});
+describe('formatPhone', () => {
+  it('formats Brazilian numbers as (99) 9 9999-9999', () => {
+    expect(formatPhone('5563999925840')).toBe('(63) 9 9992-5840');
+    expect(formatPhone('63984028033')).toBe('(63) 9 8402-8033');
+    expect(formatPhone('+55 (63) 3218-0000')).toBe('(63) 3218-0000');
+    expect(formatPhone('')).toBe('');
+  });
+  it('keeps a filled trip report with several days on a single page', async () => {
+    const entries = ['2026-10-21', '2026-10-22', '2026-10-23'].map((date) => ({ date, activity: 'Visita técnica às áreas irrigadas.' }));
+    const pdf = await pdfParse(await travelPdf({ ...b, project: 'Título institucional '.repeat(8) }, { origin: 'Palmas/TO', destination: 'Lagoa da Confusão/TO', departure: '2026-10-21', returnDate: '2026-10-23', entries }));
+    expect(pdf.numpages).toBe(1);
+    expect(pdf.text).toContain('23/10/2026');
   });
 });
 describe('tenant authorization', () => {

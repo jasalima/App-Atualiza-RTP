@@ -7,10 +7,10 @@ export const travelQuery = z.object({ projectId: z.string().uuid(), scholarId: z
 export async function loadTravel(projectId: string, scholarId: string) {
   const session = await requireProject(projectId);
   if (session.role === 'scholar' && session.scholarId !== scholarId) throw Object.assign(new Error('Você só pode gerar o próprio termo.'), { status: 403 });
-  const [row] = await sql`SELECT s.full_name,s.role_area,s.phone,s.email,p.title FROM scholars s JOIN projects p ON p.id=s.project_id
+  const [row] = await sql`SELECT s.full_name,s.role_area,s.phone,s.email,p.title,p.agreement FROM scholars s JOIN projects p ON p.id=s.project_id
     WHERE s.id=${scholarId}::uuid AND s.project_id=${projectId}::uuid AND s.deleted_at IS NULL AND p.deleted_at IS NULL`;
   if (!row) throw Object.assign(new Error('Beneficiário não encontrado neste projeto.'), { status: 404 });
-  const beneficiary: TravelBeneficiary = { name: String(row.full_name), role: String(row.role_area), phone: String(row.phone), email: String(row.email), project: String(row.title) };
+  const beneficiary: TravelBeneficiary = { name: String(row.full_name), role: String(row.role_area), phone: String(row.phone), email: String(row.email), project: String(row.agreement || "").trim() || String(row.title) };
   return { session, beneficiary };
 }
 export const travelEntry = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')), activity: z.string().max(2000) });
