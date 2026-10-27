@@ -100,8 +100,8 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
           signature('De acordo (Coordenador do projeto):')
         ]
       }),
-      para([{ text: 'Observações:', bold: true }, { text: ` ${TRAVEL_NOTES[0]}` }], { after: 120 }),
-      ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 120 })),
+      para([{ text: 'Observações:', bold: true }, { text: ` ${TRAVEL_NOTES[0]}` }], { after: 0 }),
+      ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 0 })),
       new Paragraph({ pageBreakBefore: true, alignment: AlignmentType.CENTER, spacing: { before: 0, after: 360 }, children: [new TextRun({ text: PHOTO_TITLE, bold: true, font: FONT, size: SIZE })] }),
       para('')
     ] }]
@@ -163,10 +163,10 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     row('Data:', 'De acordo (Coordenador do projeto):', 52, true, true);
 
     doc.y = y + 4;
-    const notesH = TRAVEL_NOTES.reduce((s, n) => s + font().heightOfString(`Observações: ${n}`, { width: w, lineGap: 1 }) + 6, 0);
+    const notesH = TRAVEL_NOTES.reduce((s, n) => s + font().heightOfString(`Observações: ${n}`, { width: w, lineGap: 1 }), 0);
     if (doc.y + notesH > bottom) { doc.addPage(); doc.y = 31; }
-    font(true).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: 1 }); font().text(` ${TRAVEL_NOTES[0]}`, { lineGap: 1 }); doc.y += 6;
-    for (const n of TRAVEL_NOTES.slice(1)) { font().text(n, x, doc.y, { width: w, lineGap: 1 }); doc.y += 6; }
+    font(true).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: 1 }); font().text(` ${TRAVEL_NOTES[0]}`, { lineGap: 1 });
+    for (const n of TRAVEL_NOTES.slice(1)) font().text(n, x, doc.y, { width: w, lineGap: 1 });
 
     doc.addPage(); doc.y = 31;
     font(true).text(PHOTO_TITLE, x, doc.y, { width: w, align: 'center' }); doc.y += 18;
