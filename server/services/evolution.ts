@@ -22,6 +22,24 @@ export class Evolution {
     if (!result || result.error) throw new EvolutionError('A Evolution API não confirmou a operação.');
     return result;
   }
+  async checkCredentials() {
+    const result = await this.call('/instance/fetchInstances', this.masterKey);
+    if (!Array.isArray(result)) throw new EvolutionError('O servidor não confirmou as credenciais.');
+  }
+  async recoverScopedToken(instance: string) {
+    const rows = await this.call(`/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`, this.masterKey);
+    const row = Array.isArray(rows) ? rows.find(r => (r.name ?? r.instance?.instanceName ?? r.instanceName) === instance) : null;
+    const token = row?.token ?? row?.hash ?? row?.instance?.token;
+    if (typeof token !== 'string' || !token) throw new EvolutionError('Não foi possível recuperar a chave desta conexão.', 409);
+    await this.state(instance, token);
+    return token;
+  }
+  async sendDocument(instance: string, token: string, file: { buffer: Buffer; mime: string; filename: string }, number: string, caption: string) {
+    const result = await this.call(`/message/sendMedia/${encodeURIComponent(instance)}`, token, { number, mediatype: 'document', mimetype: file.mime, media: file.buffer.toString('base64'), fileName: file.filename, caption });
+    const id = result.key?.id;
+    if (typeof id !== 'string' || !id) throw new EvolutionError('O servidor não confirmou o identificador do envio.');
+    return { messageId: id };
+  }
   async ensure(instance: string, token: string) {
     let rows: unknown;
     try { rows = await this.call(`/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`, this.masterKey); }

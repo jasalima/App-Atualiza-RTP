@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Check, Download, RefreshCw, Trash2 } from 'lucide-react';
 import { download, reports as reportsApi } from '../api';
 import type { Report, ReportContent, Validation } from '../types';
+import SendDocumentButton from '../SendDocumentButton';
 import { Notice, Skeleton, Tag, errorText, fmt, fmtPeriod, statusLabel, useScope, useToast } from '../ui';
 
 type Section = keyof ReportContent['sections'];
@@ -21,7 +22,7 @@ function AutoText({ value, onChange, label, readOnly }: { value: string; onChang
 }
 
 export default function ReportEditor() {
-  const { id } = useParams(), { canManage } = useScope(), toast = useToast(), nav = useNavigate();
+  const { id } = useParams(), { canManage, user } = useScope(), toast = useToast(), nav = useNavigate();
   async function remove() {
     const reason = prompt(`Excluir o RTP ${report!.number}? Ele sairá das listas, mas fica guardado no histórico de auditoria, e o número ${report!.number} não será reutilizado.\n\nInforme o motivo da exclusão:`);
     if (reason === null) return;
@@ -124,6 +125,7 @@ export default function ReportEditor() {
           <div style={{ display: 'grid', gap: 8 }}>
             <button className="btn btn-block" disabled={dirty || !!busy} onClick={() => file('docx')}><Download />{busy === 'docx' ? 'Gerando…' : 'DOCX editável'}</button>
             <button className="btn btn-block" disabled={dirty || !!busy} onClick={() => file('pdf')}><Download />{busy === 'pdf' ? 'Gerando…' : 'PDF final'}</button>
+            {(canManage || user.scholarId === report.scholar_id) && <SendDocumentButton className="btn-block" disabled={dirty || !!busy} source={{kind:'rtp',id:report.id,label:`RTP ${report.number}`,scholarId:report.scholar_id}} />}
           </div>
           {report.status !== 'approved' && report.status !== 'exported' && <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Antes da aprovação, os arquivos servem como prévia.</p>}
         </div>

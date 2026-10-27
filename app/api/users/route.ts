@@ -67,10 +67,8 @@ export async function POST(request:Request){
             jsonb_build_object('email',${value.email}::text,'role',${value.role}::text))`,
     ]);
     let whatsappProvisioned = false;
-    if (process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY) {
-      try { await provisionWhatsApp(value.projectId, createdUserId); whatsappProvisioned = true; }
-      catch { /* Account is committed; coordination can retry provisioning without creating another account. */ }
-    }
+    try { await provisionWhatsApp(value.projectId, createdUserId); whatsappProvisioned = true; }
+    catch { /* Account is committed; coordination can retry provisioning without creating another account. */ }
     return Response.json({userId:createdUserId,temporaryPassword:password,whatsappProvisioned},{status:201,headers:{'Cache-Control':'no-store'}});
   } catch(error) {
     // Compensate an Auth-first signup when the application transaction fails.

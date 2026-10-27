@@ -8,6 +8,7 @@ import { ExecutionForm, ExecutionLog, type ExecutionDraft } from './Executions';
 import { ScholarForm } from './Scholars';
 import { Cronograma, gridMonths } from '../Cronograma';
 import { describeMonths, isScheduledIn } from '@/lib/schedule';
+import SendDocumentButton from '../SendDocumentButton';
 
 type Tab = 'plan' | 'execution' | 'gaps' | 'reports' | 'history';
 
@@ -47,6 +48,7 @@ export default function ScholarDetail() {
     {tab === 'plan' && <section className="panel">
       <div className="panel-head">
         <div><h2>Plano de Trabalho individual</h2><p>{plan ? `Versão ${plan.version}${plan.documents?.original_name ? `, extraída de ${plan.documents.original_name}` : ''}` : 'Nenhum plano importado'}</p></div>
+        {plan?.document_id && mayWrite && <SendDocumentButton iconOnly source={{kind:'document',id:plan.document_id,label:plan.documents?.original_name || 'Plano de Trabalho',scholarId:s.id}} />}
         {canManage && <div className="head-actions">{plan && <NavLink className="btn btn-sm" to={`/plans/${s.id}`}>{plan.status === 'confirmed' ? 'Revisar extração' : 'Conferir extração'}</NavLink>}<NavLink className="btn btn-sm btn-quiet" to="/plans"><Upload />Importar nova versão</NavLink></div>}
       </div>
       {plan && plan.status !== 'confirmed' && <div style={{ padding: '14px 24px 0' }}><Notice tone="warn" title="Extração ainda não conferida">Os itens abaixo foram identificados automaticamente. Confira antes de gerar relatórios.</Notice></div>}
@@ -81,14 +83,14 @@ export default function ScholarDetail() {
 
     {tab === 'reports' && <section className="panel">
       <div className="panel-head"><div><h2>Relatórios do bolsista</h2></div>{canManage && <NavLink className="btn btn-sm btn-primary" to={`/generate?scholar=${s.id}`}>Gerar RTP</NavLink>}</div>
-      {reports.length ? <div className="table-wrap"><table className="ledger"><thead><tr><th>RTP</th><th>Período</th><th>Emissão</th><th>Situação</th></tr></thead>
-        <tbody>{reports.map((r) => <tr key={r.id}><td><NavLink to={`/reports/${r.id}`}>RTP {r.number}</NavLink></td><td className="num">{fmtPeriod(r.period_start, r.period_end)}</td><td className="num">{fmt(r.issued_on)}</td><td><Tag status={r.status} /></td></tr>)}</tbody></table></div>
+      {reports.length ? <div className="table-wrap"><table className="ledger"><thead><tr><th>RTP</th><th>Período</th><th>Emissão</th><th>Situação</th><th>Enviar</th></tr></thead>
+        <tbody>{reports.map((r) => <tr key={r.id}><td><NavLink to={`/reports/${r.id}`}>RTP {r.number}</NavLink></td><td className="num">{fmtPeriod(r.period_start, r.period_end)}</td><td className="num">{fmt(r.issued_on)}</td><td><Tag status={r.status} /></td><td>{mayWrite && <SendDocumentButton iconOnly source={{kind:'rtp',id:r.id,label:`RTP ${r.number}`,scholarId:s.id}} />}</td></tr>)}</tbody></table></div>
         : <Empty title="Nenhum RTP gerado">Os relatórios deste bolsista aparecerão aqui, por período.</Empty>}
     </section>}
 
     {tab === 'history' && <section className="panel">
       <div className="panel-head"><div><h2>Versões do Plano de Trabalho</h2><p>Uma nova importação substitui a anterior sem apagá-la.</p></div></div>
-      {planHistory.length ? <ul className="versions">{planHistory.map((p) => <li key={p.id}><b>v{p.version}</b><div>{p.documents?.original_name ?? 'Documento'}<small>Importado em {fmt(p.created_at)}{p.confirmed_at ? `, conferido em ${fmt(p.confirmed_at)}` : ''}</small></div><Tag status={p.status === 'confirmed' ? 'confirmed' : p.status === 'replaced' ? 'replaced' : 'pending_plan'} /></li>)}</ul>
+      {planHistory.length ? <ul className="versions">{planHistory.map((p) => <li key={p.id}><b>v{p.version}</b><div>{p.documents?.original_name ?? 'Documento'}<small>Importado em {fmt(p.created_at)}{p.confirmed_at ? `, conferido em ${fmt(p.confirmed_at)}` : ''}</small></div><Tag status={p.status === 'confirmed' ? 'confirmed' : p.status === 'replaced' ? 'replaced' : 'pending_plan'} />{p.document_id && mayWrite && <SendDocumentButton iconOnly source={{kind:'document',id:p.document_id,label:p.documents?.original_name || 'Plano de Trabalho',scholarId:s.id}} />}</li>)}</ul>
         : <Empty title="Nenhuma versão">O histórico começa na primeira importação.</Empty>}
     </section>}
 

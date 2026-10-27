@@ -3,6 +3,10 @@ import { Evolution, gesprojectInstance } from '../server/services/evolution';
 import { sealCredential } from '../server/services/travel-credentials';
 const { query } = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('../lib/db', () => ({ sql: query }));
+vi.mock('../lib/connectivity-config', async () => {
+  const { Evolution } = await import('../server/services/evolution');
+  return { evolutionForProject: async () => new Evolution(), ConnectivityError: class extends Error { code: string; constructor(message: string, code: string) { super(message); this.code = code; } } };
+});
 import { ownWhatsApp, provisionWhatsApp } from '../lib/whatsapp-connections';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); query.mockReset(); });

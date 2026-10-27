@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
+import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, Link2, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
 import { neon, prepareDataApi, resetDataApiToken } from './neon';
 import { projects as projectsApi, users } from './api';
 import type { Project, Role, User } from './types';
@@ -17,6 +17,9 @@ import Reports from './screens/Reports';
 import ReportEditor from './screens/ReportEditor';
 import SettingsPage from './screens/Settings';
 import TravelAccountability from './screens/TravelAccountability';
+import Connectivity from './screens/Connectivity';
+import Documents from './screens/Documents';
+import './connectivity.css';
 import { InstallAppButton } from './pwa';
 
 function App() {
@@ -142,7 +145,8 @@ const groups = [
   { label: 'Preparar', items: [['/projects', 'Projetos', FolderKanban], ['/scholars', 'Bolsistas', Users], ['/plans', 'Planos de Trabalho', BookOpen]] },
   { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity]] },
   { label: 'Relatar', items: [['/generate', 'Gerar RTP', Sparkles], ['/reports', 'Relatórios', FileText]] },
-  { label: 'Prestação de contas', items: [['/travel', 'Diárias e passagens', FileText]] }
+  { label: 'Prestação de contas', items: [['/travel', 'Diárias e passagens', FileText]] },
+  { label: 'Compartilhar', items: [['/documents', 'Documentos', FileText], ['/connectivity', 'Conectividade', Link2]] }
 ] as const;
 
 function Shell({ user, logout }: { user: User; logout: () => void }) {
@@ -199,6 +203,8 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="/reports/:id" element={<ReportEditor />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/travel" element={<TravelAccountability />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="/connectivity" element={<Connectivity />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>}
         </main>

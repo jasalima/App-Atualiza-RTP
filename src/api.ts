@@ -68,9 +68,9 @@ export const scholars = {
   detail: async (id: string) => {
     const [scholar, plans, items, executions, reports] = await Promise.all([
       db.from('scholars').select('*').eq('id', id).single(),
-      db.from('work_plans').select('id,version,status,functional_identity,confirmed_at,created_at,documents(original_name)').eq('scholar_id', id).order('version', { ascending: false }),
+      db.from('work_plans').select('id,document_id,version,status,functional_identity,confirmed_at,created_at,documents(original_name)').eq('scholar_id', id).order('version', { ascending: false }),
       db.from('plan_items').select('*, work_plans!inner(status)').eq('scholar_id', id).neq('work_plans.status', 'replaced').order('sort_order'),
-      db.from('execution_records').select('*, evidence(id, description, documents(original_name,storage_key))').eq('scholar_id', id).is('deleted_at', null).order('period_start', { ascending: false }),
+      db.from('execution_records').select('*, evidence(id, description, documents(id,original_name,storage_key))').eq('scholar_id', id).is('deleted_at', null).order('period_start', { ascending: false }),
       db.from('reports').select('*').eq('scholar_id', id).is('deleted_at', null).order('period_start', { ascending: false })
     ]);
     const planRows = unwrap<WorkPlan[]>(plans);

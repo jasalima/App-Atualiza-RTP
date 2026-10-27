@@ -1,14 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ access: vi.fn(), own: vi.fn(), provision: vi.fn(), batch: vi.fn(), state: vi.fn(), connect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ access: vi.fn(), own: vi.fn(), provision: vi.fn(), batch: vi.fn(), state: vi.fn(), connect: vi.fn(), config:vi.fn(),save:vi.fn() }));
 vi.mock('../lib/authorize', () => ({ requireProject: mocks.access }));
 vi.mock('../lib/travel', () => ({ sameOrigin: () => {}, travelError: (error: { status?: number; message?: string }) => Response.json({ error: error.message }, { status: error.status || 500 }) }));
 vi.mock('../lib/whatsapp-connections', () => ({ ownWhatsApp: mocks.own, provisionWhatsApp: mocks.provision, provisionProjectWhatsApp: mocks.batch }));
+vi.mock('../lib/connectivity-config', () => ({ connectivityConfig:mocks.config, saveConnectivity:mocks.save, evolutionForProject: async () => ({ state: mocks.state, connect: mocks.connect }) }));
 vi.mock('../server/services/evolution', () => ({ Evolution: class { state = mocks.state; connect = mocks.connect; } }));
-import { GET, POST } from '../app/api/travel/connection/route';
+import { GET, POST, PUT } from '../app/api/connectivity/route';
 const projectId = '10ab6e37-f57e-41e0-8218-6f69d51c33c4';
 const request = (action: string) => new Request('https://app.example/api/travel/connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, action, userId: 'foreign-user', instance: 'foreign-app' }) });
-beforeEach(() => { Object.values(mocks).forEach(fn => fn.mockReset()); mocks.access.mockResolvedValue({ user: { id: 'current-user' } }); });
+beforeEach(() => { Object.values(mocks).forEach(fn => fn.mockReset()); mocks.access.mockResolvedValue({ user: { id: 'current-user' },role:'coordinator' }); mocks.config.mockResolvedValue({url:'https://evolution.example',key:'private-master',source:'project'}); });
 describe('WhatsApp connection authorization', () => {
+  it('distinguishes confirmed missing configuration from an unreadable instance key',async()=>{
+    mocks.config.mockResolvedValueOnce({url:'',key:'',source:'environment'});
+    const first=await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`));
+    expect(await first.json()).toMatchObject({code:'CONFIG_MISSING',provisionAvailable:false});
+    mocks.own.mockRejectedValueOnce({code:'INSTANCE_KEY_UNREADABLE'});
+    const second=await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`));
+    expect(await second.json()).toMatchObject({code:'INSTANCE_KEY_UNREADABLE',provisionAvailable:true,state:'unavailable'});
+  });
+  it('requires management access to change server credentials',async()=>{
+    mocks.access.mockRejectedValue({status:403,message:'Acesso negado'});
+    const response=await PUT(new Request('https://app.example/api/connectivity',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,serverUrl:'https://evolution.example',apiKey:'secret'})}));
+    expect(response.status).toBe(403);expect(mocks.access).toHaveBeenCalledWith(projectId,true);expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it('never echoes an administrative key after saving configuration',async()=>{
+    mocks.save.mockResolvedValue(undefined);
+    const response=await PUT(new Request('https://app.example/api/connectivity',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,serverUrl:'https://evolution.example/',apiKey:'private-master-key'})}));
+    expect(await response.json()).toEqual({success:true});
+    expect(mocks.save).toHaveBeenCalledWith(projectId,'current-user','https://evolution.example','private-master-key');
+  });
   it('provisions only the authenticated user, ignoring forged user/instance fields', async () => {
     mocks.provision.mockResolvedValue({ instance: 'Gesproject-own', created: true });
     expect((await POST(request('provision'))).status).toBe(200);

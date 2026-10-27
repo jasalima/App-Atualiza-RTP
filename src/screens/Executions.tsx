@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
 import { executions as executionsApi, scholars as scholarsApi } from '../api';
 import type { Execution, PlanItem, Scholar } from '../types';
+import SendDocumentButton from '../SendDocumentButton';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, executionStatuses, fmt, fmtPeriod, statusLabel, useAsync, useScope, useToast } from '../ui';
 
 export type ExecutionDraft = Partial<Execution> & { plan_item_id?: string | null };
@@ -58,7 +59,7 @@ export function ExecutionLog({ items, planItems, projectId, onEdit, onRemove }: 
         {planned && <div className="planned">Previsto no plano: {planned}</div>}
         {(e.result || e.product) && <p>{[e.product && `Produto: ${e.product}.`, e.result && `Resultado: ${e.result}`].filter(Boolean).join(' ')}</p>}
         {e.notes && <p className="muted">{e.notes}</p>}
-        {!!e.evidence?.length && <div className="attachments">{e.evidence.map((ev) => <button className="chip" key={ev.id} onClick={() => ev.documents && executionsApi.openEvidence(projectId, ev.documents.storage_key).catch((x) => toast(errorText(x), 'crit'))}><Paperclip />{ev.description || ev.documents?.original_name}</button>)}</div>}
+        {!!e.evidence?.length && <div className="attachments">{e.evidence.map((ev) => <span className="document-attachment" key={ev.id}><button className="chip" onClick={() => ev.documents && executionsApi.openEvidence(projectId, ev.documents.storage_key).catch((x) => toast(errorText(x), 'crit'))}><Paperclip />{ev.description || ev.documents?.original_name}</button>{ev.documents?.id && <SendDocumentButton iconOnly source={{kind:'document',id:ev.documents.id,label:ev.documents.original_name}} />}</span>)}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
         <Tag status={e.status} />

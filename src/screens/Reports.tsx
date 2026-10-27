@@ -3,10 +3,11 @@ import { NavLink } from 'react-router-dom';
 import { Sparkles, Trash2 } from 'lucide-react';
 import { reports as reportsApi } from '../api';
 import type { Report } from '../types';
+import SendDocumentButton from '../SendDocumentButton';
 import { Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, useAsync, useScope, useToast } from '../ui';
 
 export default function Reports() {
-  const { project, canManage } = useScope();
+  const { project, canManage, user } = useScope();
   const { data, error, reload } = useAsync(() => reportsApi.list(project!.id), [project?.id]);
   const toast = useToast();
   // Deleted reports keep their number reserved: the sequence never reuses it.
@@ -29,7 +30,7 @@ Informe o motivo da exclusão:`);
         <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Situação"><option value="">Todas as situações</option><option value="draft">Rascunho</option><option value="pending_review">Em revisão</option><option value="approved">Aprovado</option><option value="exported">Exportado</option></select>
       </div>
       <div className="table-wrap"><table className="ledger">
-        <thead><tr><th>RTP</th><th>Bolsista</th><th>Período</th><th>Emissão</th><th>Versão</th><th>Situação</th>{canManage && <th />}</tr></thead>
+        <thead><tr><th>RTP</th><th>Bolsista</th><th>Período</th><th>Emissão</th><th>Versão</th><th>Situação</th><th>Enviar</th>{canManage && <th />}</tr></thead>
         <tbody>{rows.map((r) => <tr key={r.id}>
           <td className="num"><NavLink to={`/reports/${r.id}`}><b>{r.number}</b></NavLink></td>
           <td><NavLink to={`/scholars/${r.scholar_id}`} style={{ color: 'inherit' }}>{r.scholar_name}</NavLink></td>
@@ -37,6 +38,7 @@ Informe o motivo da exclusão:`);
           <td className="num">{fmt(r.issued_on)}</td>
           <td className="num">v{r.current_version}</td>
           <td><Tag status={r.status} /></td>
+          <td>{(canManage || user.scholarId === r.scholar_id) && <SendDocumentButton iconOnly source={{kind:'rtp',id:r.id,label:`RTP ${r.number} — ${r.scholar_name || ''}`,scholarId:r.scholar_id}} />}</td>
           {canManage && <td><button className="icon-btn" onClick={() => remove(r)} aria-label={`Excluir RTP ${r.number}`} title="Excluir"><Trash2 /></button></td>}
         </tr>)}</tbody>
       </table></div>
