@@ -30,7 +30,11 @@ describe('Formulário 26', () => {
       expect(text).not.toContain('FRANCISCO GILSON');
       expect(text).not.toContain('LAGOA DA CONFUSÃO');
     }
-    expect(pdf.numpages).toBe(1);
+    expect(pdf.numpages).toBe(2);
+    expect(pdf.text).toContain('REGISTRO FOTOGRÁFICO');
+    expect(docx.value).toContain('REGISTRO FOTOGRÁFICO');
+    expect(docx.value.indexOf('REGISTRO FOTOGRÁFICO')).toBeGreaterThan(docx.value.indexOf('Observações:'));
+    expect(docx.value).not.toContain('Foto 1:');
   });
   it('handles long registered names and project titles without losing the signature blocks', async () => {
     const pdf = await pdfParse(await travelPdf({ ...b, name: 'Nome extenso '.repeat(10), project: 'Título institucional extenso '.repeat(12) }));
@@ -45,10 +49,11 @@ describe('formatPhone', () => {
     expect(formatPhone('+55 (63) 3218-0000')).toBe('(63) 3218-0000');
     expect(formatPhone('')).toBe('');
   });
-  it('keeps a filled trip report with several days on a single page', async () => {
+  it('keeps a filled trip report with several days on a single page before the photo page', async () => {
     const entries = ['2026-10-21', '2026-10-22', '2026-10-23'].map((date) => ({ date, activity: 'Visita técnica às áreas irrigadas.' }));
     const pdf = await pdfParse(await travelPdf({ ...b, project: 'Título institucional '.repeat(8) }, { origin: 'Palmas/TO', destination: 'Lagoa da Confusão/TO', departure: '2026-10-21', returnDate: '2026-10-23', entries }));
-    expect(pdf.numpages).toBe(1);
+    expect(pdf.numpages).toBe(2);
+    expect(pdf.text.split('REGISTRO FOTOGRÁFICO')[0]).toContain('Caso o relatório não seja encaminhado');
     expect(pdf.text).toContain('23/10/2026');
   });
 });

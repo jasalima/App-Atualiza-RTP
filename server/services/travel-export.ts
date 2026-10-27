@@ -31,6 +31,8 @@ export const TRAVEL_NOTES = [
 ];
 const TITLE = 'FUNDAÇÃO DE APOIO CIENTÍFICO E TECNOLÓGICO DO TOCANTINS';
 const INSTRUCTION = 'Descrever o objetivo da viagem e relatar os resultados, assim como outras informações pertinentes';
+// Last page: left free for the member to paste the trip photos as they prefer.
+export const PHOTO_TITLE = 'REGISTRO FOTOGRÁFICO';
 const SIGN_LINE = (label: string) => '_'.repeat(Math.max(12, 62 - label.length));
 
 // Measurements taken from the FAPTO Form 26 model (A4, Calibri 11, single spacing).
@@ -97,7 +99,9 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
         ]
       }),
       para([{ text: 'Observações:', bold: true }, { text: ` ${TRAVEL_NOTES[0]}` }], { after: 120 }),
-      ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 120 }))
+      ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 120 })),
+      new Paragraph({ pageBreakBefore: true, alignment: AlignmentType.CENTER, spacing: { before: 0, after: 360 }, children: [new TextRun({ text: PHOTO_TITLE, bold: true, font: FONT, size: SIZE })] }),
+      para('')
     ] }]
   }));
 }
@@ -161,6 +165,9 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     if (doc.y + notesH > bottom) { doc.addPage(); doc.y = 31; }
     font(true).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: 1 }); font().text(` ${TRAVEL_NOTES[0]}`, { lineGap: 1 }); doc.y += 6;
     for (const n of TRAVEL_NOTES.slice(1)) { font().text(n, x, doc.y, { width: w, lineGap: 1 }); doc.y += 6; }
+
+    doc.addPage(); doc.y = 31;
+    font(true).text(PHOTO_TITLE, x, doc.y, { width: w, align: 'center' }); doc.y += 18;
     doc.end();
   });
 }

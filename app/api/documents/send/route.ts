@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     const provider = await evolutionForProject(input.projectId);
     if (await provider.state(connection.instance, connection.token) !== 'open') return Response.json({ error: 'Seu WhatsApp está desconectado. Abra Conectividade e escaneie o QR Code.' }, { status: 409 });
     const file = await source.makeFile();
+    const caption = 'caption' in source && source.caption ? await source.caption() : `${source.label}. Documento do projeto.`;
     if (file.buffer.length > MAX_DOCUMENT_BYTES) return Response.json({ error: 'O documento excede o limite de 20 MB.' }, { status: 413 });
     const claimed = await sql`INSERT INTO document_deliveries(project_id,auth_user_id,request_id,source_kind,source_id,source_version,file_name,format,recipient_phone,status)
       SELECT ${input.projectId}::uuid,${user.id},${input.requestId}::uuid,${input.kind},${input.sourceId}::uuid,${source.version},${file.filename},${input.format},${number},'sending'
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
       ON CONFLICT DO NOTHING RETURNING id`;
     if (!claimed.length) return Response.json({ error: 'Envio já solicitado ou realizado recentemente. Confira o WhatsApp e aguarde 30 segundos antes de uma nova tentativa.' }, { status: 409 });
     try {
-      const result = await provider.sendDocument(connection.instance, connection.token, file, number, `${source.label}. Documento do projeto.`);
+      const result = await provider.sendDocument(connection.instance, connection.token, file, number, caption);
       await sql.transaction([
         sql`UPDATE document_deliveries SET status='accepted',provider_message_id=${result.messageId},updated_at=now() WHERE id=${claimed[0].id}::uuid`,
         sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${input.projectId}::uuid,'send_document','document_delivery',${String(claimed[0].id)},jsonb_build_object('sourceKind',${input.kind}::text,'sourceId',${input.sourceId}::text,'version',${source.version}::int))`,

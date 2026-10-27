@@ -16,6 +16,30 @@ export function recipientNumber(value: string) {
   if (!/^[1-9]\d{9,14}$/.test(number)) throw Object.assign(new Error('Informe o telefone com DDI e DDD (ex.: 5563999999999).'), { status: 400 });
   return number;
 }
+type Session = Awaited<ReturnType<typeof requireProject>>;
+const ROLE_LABEL: Record<string, string> = { admin: 'Administração do sistema', coordinator: 'Coordenação do projeto', scholar: 'Bolsista' };
+/** Who signs the message: their member record (by link or e-mail), else the account name and access role. */
+export async function sender(session: Session, projectId: string) {
+  const user = session.user as { name?: string; email?: string }, email = String(user.email ?? '');
+  const [member] = await sql`SELECT full_name,role_area FROM scholars WHERE project_id=${projectId}::uuid AND deleted_at IS NULL
+    AND (id=${session.scholarId}::uuid OR (${email}::text<>'' AND lower(email)=lower(${email}::text))) ORDER BY (id=${session.scholarId}::uuid) DESC NULLS LAST LIMIT 1`;
+  return {
+    name: String(member?.full_name ?? '').trim() || String(user.name ?? '').trim() || email || 'Equipe do projeto',
+    role: String(member?.role_area ?? '').trim() || ROLE_LABEL[session.role] || 'Equipe do projeto'
+  };
+}
+/** WhatsApp text that goes with a travel accountability report. */
+export async function accountabilityMessage(session: Session, projectId: string, label: string) {
+  const from = await sender(session, projectId);
+  return [
+    `Olá, essa é uma mensagem automática, favor assinar o documento anexo ${label} e devolver em pdf.`,
+    'Lembramos que é necessário inserir o relatório de fotos conforme consta da seção "registro fotográfico".',
+    '',
+    'Atenciosamente,',
+    `*${from.name}*`,
+    from.role
+  ].join('\n');
+}
 export async function loadDocumentSource(input: z.infer<typeof documentRequest>) {
   const session = await requireProject(input.projectId);
   const notFound = () => Object.assign(new Error('Documento não encontrado neste projeto.'), { status: 404 });
@@ -29,10 +53,12 @@ export async function loadDocumentSource(input: z.infer<typeof documentRequest>)
     const [filled] = await sql`SELECT 1 FROM travel_reports WHERE id=${input.sourceId}::uuid AND project_id=${input.projectId}::uuid AND deleted_at IS NULL`;
     if (filled) {
       const { beneficiary, report } = await loadTravelReport(input.projectId, input.sourceId);
-      return { session, version: null, label: `Formulário 26 — relatório de viagem${report.destination ? ` a ${report.destination}` : ''}`, makeFile: () => travelFile(beneficiary, format, travelFill(report)) };
+      const label = `Formulário 26 — Relatório de Viagem${report.destination ? ` a ${report.destination}` : ''}`;
+      return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label), makeFile: () => travelFile(beneficiary, format, travelFill(report)) };
     }
     const { beneficiary } = await loadTravel(input.projectId, input.sourceId);
-    return { session, version: null, label: 'Formulário 26 — relatório de viagem', makeFile: () => travelFile(beneficiary, format) };
+    const label = 'Formulário 26 — Relatório de Viagem';
+    return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label), makeFile: () => travelFile(beneficiary, format) };
   }
   if (input.kind === 'rtp') {
     if (input.format === 'original') throw Object.assign(new Error('Escolha PDF ou DOCX para o RTP.'), { status: 400 });

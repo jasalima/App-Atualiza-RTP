@@ -61,6 +61,21 @@ describe('application document authorization', () => {
     expect(mocks.travelFile).toHaveBeenCalledWith({name:'Beneficiary'},'pdf',{destination:'Lagoa da Confusão/TO'});
     expect(source.label).toContain('Lagoa da Confusão/TO');
   });
+  it('writes the accountability message signed by the sender and their project function', async () => {
+    mocks.access.mockResolvedValue({ user:{id:'sender',name:'Jaasiel',email:'j@example.com'},role:'admin',scholarId:null });
+    mocks.query.mockResolvedValueOnce([{'?column?':1}]).mockResolvedValueOnce([{full_name:'Jaasiel Nascimento Lima',role_area:'Assistente de Gestão do Projeto'}]);
+    mocks.travelReport.mockResolvedValue({beneficiary:{name:'Beneficiary'},report:{destination:'Lagoa da Confusão/TO'}});
+    const source = await loadDocumentSource({...input,kind:'travel',format:'docx'});
+    expect(await source.caption!()).toBe([
+      'Olá, essa é uma mensagem automática, favor assinar o documento anexo Formulário 26 — Relatório de Viagem a Lagoa da Confusão/TO e devolver em pdf.',
+      'Lembramos que é necessário inserir o relatório de fotos conforme consta da seção "registro fotográfico".',
+      '', 'Atenciosamente,', '*Jaasiel Nascimento Lima*', 'Assistente de Gestão do Projeto'
+    ].join('\n'));
+    mocks.query.mockResolvedValueOnce([]); mocks.travel.mockResolvedValue({beneficiary:{name:'Beneficiary'}});
+    const fallback = await loadDocumentSource({...input,kind:'travel',format:'docx'});
+    mocks.query.mockResolvedValueOnce([]);
+    expect(await fallback.caption!()).toMatch(/\*Jaasiel\*\nAdministração do sistema$/);
+  });
 });
 describe('private stored documents', () => {
   const data = Buffer.from('private-document');
