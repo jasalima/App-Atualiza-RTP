@@ -6,15 +6,15 @@ import type { ConnectivityStatus, DeliverySource } from './connectivity';
 import type { ScholarOverview } from './types';
 import { Drawer, Notice, Skeleton, errorText, useScope, useToast } from './ui';
 
-export default function SendDocumentButton({ source, disabled, iconOnly = false, className = '' }: { source: DeliverySource; disabled?: boolean; iconOnly?: boolean; className?: string }) {
+export default function SendDocumentButton({ source, disabled, iconOnly = false, className = '', onSent }: { source: DeliverySource; disabled?: boolean; iconOnly?: boolean; className?: string; onSent?: () => void }) {
   const { project, user } = useScope();
   const [open, setOpen] = useState(false), [attempt, setAttempt] = useState(0);
   return <>
     <button type="button" className={`${iconOnly ? 'icon-btn' : 'btn'} ${className}`} disabled={disabled} onClick={() => { setAttempt(n => n + 1); setOpen(true); }} aria-label={`Enviar documento: ${source.label}`} title={`Enviar documento: ${source.label}`}><Send />{!iconOnly && 'Enviar documento'}</button>
-    {open && <SendDialog key={`${user.id}:${project!.id}:${source.kind}:${source.id}:${attempt}`} source={source} projectId={project!.id} onClose={() => setOpen(false)} />}
+    {open && <SendDialog key={`${user.id}:${project!.id}:${source.kind}:${source.id}:${attempt}`} source={source} projectId={project!.id} onClose={() => setOpen(false)} onSent={onSent} />}
   </>;
 }
-function SendDialog({ source, projectId, onClose }: { source: DeliverySource; projectId: string; onClose: () => void }) {
+function SendDialog({ source, projectId, onClose, onSent }: { source: DeliverySource; projectId: string; onClose: () => void; onSent?: () => void }) {
   const toast = useToast();
   const [members, setMembers] = useState<ScholarOverview[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [connection, setConnection] = useState<ConnectivityStatus | null>(null), [connectionError, setConnectionError] = useState('');
@@ -35,7 +35,7 @@ function SendDialog({ source, projectId, onClose }: { source: DeliverySource; pr
     setBusy(true); setError('');
     try {
       await route('/documents/send', { method: 'POST', body: JSON.stringify({ projectId, kind: source.kind, sourceId: source.id, format, recipientPhone: phone, requestId }) });
-      toast('Documento aceito pelo servidor WhatsApp para envio.'); onClose();
+      toast('Documento aceito pelo servidor WhatsApp para envio.'); onSent?.(); onClose();
     } catch (e) { setError(errorText(e)); setChecked(false); }
     finally { setBusy(false); }
   }

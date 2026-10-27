@@ -2,7 +2,7 @@
 
 import { neon } from './neon';
 import { requestJson } from './request-json';
-import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, ProjectDocument, DocumentDetail, User, Validation, WorkPlan } from './types';
+import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, ProjectDocument, DocumentDetail, DeliveryStatus, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
 
@@ -156,6 +156,7 @@ export const reports = {
 export type DocumentMeta = { title: string; category: string; description: string; scholarId: string | null; validUntil: string | null };
 export const documents = {
   list: (projectId: string) => route<ProjectDocument[]>(`/documents?projectId=${projectId}`),
+  deliveries: (projectId: string) => route<DeliveryStatus[]>(`/documents/deliveries?projectId=${projectId}`),
   detail: (projectId: string, id: string) => route<DocumentDetail>(`/documents/${id}?projectId=${projectId}`),
   update: (projectId: string, id: string, meta: DocumentMeta) => route<ProjectDocument>(`/documents/${id}?projectId=${projectId}`, { method: 'PATCH', body: JSON.stringify(meta) }),
   remove: (projectId: string, id: string, reason: string) => route(`/documents/${id}?projectId=${projectId}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, History, Plane, Trash2, Upload, X } from 'lucide-react';
 import { documents as documentsApi, reports as reportsApi, scholars as scholarsApi, travelReports, type DocumentMeta } from '../api';
-import type { DocumentDetail, ProjectDocument, Report, ScholarOverview, TravelReport } from '../types';
+import type { DeliveryStatus, DocumentDetail, ProjectDocument, Report, ScholarOverview, TravelReport } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, today, useAsync, useScope, useToast } from '../ui';
 
@@ -22,9 +22,24 @@ const validity = (d: string | null) => {
   return n < 0 ? { tone: 'crit' as const, text: `Vencido há ${-n} dia(s)` } : n <= 30 ? { tone: 'warn' as const, text: n === 0 ? 'Vence hoje' : `Vence em ${n} dia(s)` } : { tone: 'mute' as const, text: `Válido até ${fmt(d)}` };
 };
 const iconFor = (mime: string, name: string) => /image/.test(mime) ? FileImage : /sheet|excel|csv/.test(mime) || /\.(xlsx?|ods|csv)$/i.test(name) ? FileSpreadsheet : /zip/.test(mime) ? FileArchive : FileText;
+// Send state shown in the archive so a document is not sent twice. An RTP counts as sent
+// only when its current version went out.
+type SendState = { tone: 'ok' | 'warn' | 'info' | 'mute'; text: string; sent: boolean; when?: string };
+function sendState(d: DeliveryStatus | undefined, currentVersion?: number): SendState {
+  const when = d?.sentAt ? new Date(d.sentAt).toLocaleDateString('pt-BR') : undefined;
+  if (d?.sentAt && currentVersion && (d.sentVersion ?? 0) < currentVersion) return { tone: 'warn', text: 'Nova versão pendente de envio', sent: false, when };
+  if (d?.sentAt) return { tone: 'ok', text: 'Enviado ao bolsista', sent: true, when };
+  if (d?.sending) return { tone: 'info', text: 'Enviando', sent: false };
+  if (d?.uncertain) return { tone: 'warn', text: 'Conferir envio no WhatsApp', sent: false };
+  return { tone: 'mute', text: 'Pendente de envio', sent: false };
+}
+function SendTag({ state }: { state: SendState }) {
+  return <span className="send-state"><Tag tone={state.tone}>{state.text}</Tag>{state.when && <small>em {state.when}</small>}</span>;
+}
 const stem = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
 
 type Source = 'all' | 'files' | 'rtp' | 'travel';
+type Sent = 'all' | 'sent' | 'pending';
 type Row =
   | { type: 'file'; key: string; date: string; doc: ProjectDocument }
   | { type: 'rtp'; key: string; date: string; report: Report }
@@ -35,6 +50,11 @@ export default function Documents() {
   const data = useAsync(() => Promise.all([documentsApi.list(projectId), reportsApi.list(projectId).catch(() => [] as Report[]), travelReports.list(projectId).catch(() => [] as TravelReport[]), scholarsApi.list(projectId)]), [projectId]);
   const [q, setQ] = useState(''), [category, setCategory] = useState(''), [member, setMember] = useState(''), [source, setSource] = useState<Source>('all');
   const [uploading, setUploading] = useState<{ replaces?: ProjectDocument } | null>(null), [detail, setDetail] = useState<string | null>(null);
+  const deliveries = useAsync(() => documentsApi.deliveries(projectId), [projectId]);
+  const [sent, setSent] = useState<Sent>('all');
+  const sentMap = useMemo(() => new Map((deliveries.data ?? []).map((d) => [`${d.kind}:${d.id}`, d])), [deliveries.data]);
+  const stateOf = (r: Row) => r.type === 'file' ? sendState(sentMap.get(`document:${r.doc.id}`)) : r.type === 'rtp' ? sendState(sentMap.get(`rtp:${r.report.id}`), r.report.current_version) : sendState(sentMap.get(`travel:${r.travel.id}`));
+  const refreshSent = () => void deliveries.reload();
   const [files, reports, travel, members] = data.data ?? [[], [], [], []] as [ProjectDocument[], Report[], TravelReport[], ScholarOverview[]];
 
   const rows = useMemo<Row[]>(() => [
@@ -48,6 +68,7 @@ export default function Documents() {
     if (category && (r.type !== 'file' || r.doc.category !== category)) return false;
     const scholarId = r.type === 'file' ? r.doc.scholarId : r.type === 'rtp' ? r.report.scholar_id : r.travel.scholarId;
     if (member && scholarId !== member) return false;
+    if (sent !== 'all' && deliveries.data && stateOf(r).sent !== (sent === 'sent')) return false;
     const text = r.type === 'file' ? `${r.doc.title} ${r.doc.originalName} ${r.doc.description} ${r.doc.scholarName ?? ''}` : r.type === 'rtp' ? `RTP ${r.report.number} ${r.report.scholar_name ?? ''}` : `relatório de viagem ${r.travel.destination} ${r.travel.scholarName ?? ''}`;
     return !q || text.toLocaleLowerCase('pt-BR').includes(q.toLocaleLowerCase('pt-BR'));
   });
@@ -80,20 +101,21 @@ export default function Documents() {
         <div className="toolbar">
           <input className="grow" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por título, nome do arquivo, descrição ou membro" aria-label="Buscar documento" />
           <select value={source} onChange={(e) => setSource(e.target.value as Source)} aria-label="Origem"><option value="all">Tudo</option><option value="files">Arquivos</option><option value="rtp">RTPs</option><option value="travel">Relatórios de viagem</option></select>
+          <select value={sent} onChange={(e) => setSent(e.target.value as Sent)} aria-label="Situação de envio"><option value="all">Enviados e pendentes</option><option value="sent">Já enviados</option><option value="pending">Pendentes de envio</option></select>
           {canManage && <select value={member} onChange={(e) => setMember(e.target.value)} aria-label="Membro"><option value="">Todos os membros</option>{members.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}</select>}
           <span className="muted" style={{ fontSize: 13 }}>{filtered.length} item(ns), {size(used)} em arquivos</span>
         </div>
         <div className="table-wrap"><table className="ledger doc-table">
-          <thead><tr><th>Documento</th><th>Categoria</th><th>Membro</th><th>Situação</th><th>Atualizado</th><th aria-label="Ações" /></tr></thead>
-          <tbody>{filtered.map((r) => r.type === 'file' ? <FileRow key={r.key} doc={r.doc} projectId={projectId} onOpen={() => setDetail(r.doc.id)} />
+          <thead><tr><th>Documento</th><th>Categoria</th><th>Membro</th><th>Situação</th><th>Envio</th><th>Atualizado</th><th aria-label="Ações" /></tr></thead>
+          <tbody>{filtered.map((r) => r.type === 'file' ? <FileRow key={r.key} doc={r.doc} projectId={projectId} onOpen={() => setDetail(r.doc.id)} send={stateOf(r)} onSent={refreshSent} />
             : r.type === 'rtp' ? <tr key={r.key}>
               <td><NavLink className="doc-name" to={`/reports/${r.report.id}`}><FileText /><span><b>RTP {r.report.number}</b><small>{fmtPeriod(r.report.period_start, r.report.period_end)}</small></span></NavLink></td>
-              <td><Tag tone="info">Relatório Técnico Parcial</Tag></td><td>{r.report.scholar_name}</td><td><Tag status={r.report.status} /></td><td className="num">{fmt(r.date)}</td>
-              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'rtp', id: r.report.id, label: `RTP ${r.report.number}`, scholarId: r.report.scholar_id }} /></div></td></tr>
+              <td><Tag tone="info">Relatório Técnico Parcial</Tag></td><td>{r.report.scholar_name}</td><td><Tag status={r.report.status} /></td><td><SendTag state={stateOf(r)} /></td><td className="num">{fmt(r.date)}</td>
+              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'rtp', id: r.report.id, label: `RTP ${r.report.number}`, scholarId: r.report.scholar_id }} onSent={refreshSent} /></div></td></tr>
             : <tr key={r.key}>
               <td><NavLink className="doc-name" to={`/travel/${r.travel.id}`}><Plane /><span><b>Relatório de viagem{r.travel.destination ? ` a ${r.travel.destination}` : ''}</b><small>{r.travel.departureDate ? fmtPeriod(r.travel.departureDate, r.travel.returnDate) : 'Datas a preencher'}</small></span></NavLink></td>
-              <td><Tag tone="info">Formulário 26</Tag></td><td>{r.travel.scholarName}</td><td><Tag tone={r.travel.status === 'finalized' ? 'ok' : 'info'}>{r.travel.status === 'finalized' ? 'Concluído' : 'Em preenchimento'}</Tag></td><td className="num">{fmt(r.date)}</td>
-              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'travel', id: r.travel.id, label: `Formulário 26 — ${r.travel.scholarName}`, scholarId: r.travel.scholarId }} /></div></td></tr>)}</tbody>
+              <td><Tag tone="info">Formulário 26</Tag></td><td>{r.travel.scholarName}</td><td><Tag tone={r.travel.status === 'finalized' ? 'ok' : 'info'}>{r.travel.status === 'finalized' ? 'Concluído' : 'Em preenchimento'}</Tag></td><td><SendTag state={stateOf(r)} /></td><td className="num">{fmt(r.date)}</td>
+              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'travel', id: r.travel.id, label: `Formulário 26 — ${r.travel.scholarName}`, scholarId: r.travel.scholarId }} onSent={refreshSent} /></div></td></tr>)}</tbody>
         </table></div>
         {!filtered.length && <Empty title={rows.length ? 'Nenhum documento encontrado' : 'Acervo vazio'} action={!rows.length && <button className="btn btn-primary" onClick={() => setUploading({})}><Upload />Enviar documentos</button>}>{rows.length ? 'Ajuste a busca ou os filtros.' : 'Envie contratos, atas, ofícios, notas e demais arquivos do projeto. Planos importados, evidências, RTPs e relatórios de viagem aparecem aqui automaticamente.'}</Empty>}
       </section>
@@ -102,11 +124,11 @@ export default function Documents() {
     {uploading && <UploadDrawer projectId={projectId} members={canManage ? members : members.filter((m) => m.id === user.scholarId)} canManage={canManage} replaces={uploading.replaces}
       onClose={() => setUploading(null)} onDone={(n) => { setUploading(null); toast(n === 1 ? 'Documento enviado.' : `${n} documentos enviados.`); void data.reload(); }} />}
     {detail && <DetailDrawer projectId={projectId} id={detail} members={members} canManage={canManage} userId={user.id}
-      onClose={() => setDetail(null)} onChanged={() => void data.reload()} onNewVersion={(doc) => { setDetail(null); setUploading({ replaces: doc }); }} />}
+      onClose={() => setDetail(null)} onChanged={() => { void data.reload(); refreshSent(); }} onNewVersion={(doc) => { setDetail(null); setUploading({ replaces: doc }); }} />}
   </>;
 }
 
-function FileRow({ doc, projectId, onOpen }: { doc: ProjectDocument; projectId: string; onOpen: () => void }) {
+function FileRow({ doc, projectId, onOpen, send, onSent }: { doc: ProjectDocument; projectId: string; onOpen: () => void; send: SendState; onSent: () => void }) {
   const toast = useToast(), Icon = iconFor(doc.mimeType, doc.originalName), v = validity(doc.validUntil);
   const open = (mode: 'view' | 'download') => documentsApi.open(projectId, doc.id, mode).catch((e) => toast(errorText(e), 'crit'));
   return <tr>
@@ -114,11 +136,12 @@ function FileRow({ doc, projectId, onOpen }: { doc: ProjectDocument; projectId: 
     <td><Tag tone={doc.category === 'work_plan' || doc.category === 'evidence' ? 'ok' : 'mute'}>{CATEGORIES[doc.category] ?? doc.category}</Tag></td>
     <td>{doc.scholarName ?? <span className="muted">Projeto</span>}</td>
     <td>{v ? <Tag tone={v.tone}>{v.text}</Tag> : doc.versions > 1 ? <Tag tone="info">Versão {doc.version}</Tag> : <span className="muted">—</span>}</td>
+    <td><SendTag state={send} /></td>
     <td className="num">{fmt(doc.updatedAt)}</td>
     <td><div className="row-actions">
       <button className="icon-btn" onClick={() => void open('view')} aria-label={`Visualizar ${doc.title}`} title="Visualizar"><Eye /></button>
       <button className="icon-btn" onClick={() => void open('download')} aria-label={`Baixar ${doc.title}`} title="Baixar"><Download /></button>
-      <SendDocumentButton iconOnly source={{ kind: 'document', id: doc.id, label: doc.title, scholarId: doc.scholarId }} />
+      <SendDocumentButton iconOnly source={{ kind: 'document', id: doc.id, label: doc.title, scholarId: doc.scholarId }} onSent={onSent} />
       <button className="icon-btn" onClick={onOpen} aria-label={`Detalhes de ${doc.title}`} title="Detalhes, versões e histórico"><History /></button>
     </div></td>
   </tr>;
@@ -205,7 +228,7 @@ function DetailDrawer({ projectId, id, members, canManage, userId, onClose, onCh
       <div className="head-actions">
         <button className="btn" onClick={() => void open(d.id, 'view')}><Eye />Visualizar</button>
         <button className="btn" onClick={() => void open(d.id, 'download')}><Download />Baixar</button>
-        <SendDocumentButton source={{ kind: 'document', id: d.id, label: d.title, scholarId: d.scholarId }} />
+        <SendDocumentButton source={{ kind: 'document', id: d.id, label: d.title, scholarId: d.scholarId }} onSent={() => { onChanged(); void detail.reload(); }} />
         {editable && <button className="btn" onClick={() => onNewVersion(d)}><Upload />Nova versão</button>}
       </div>
 

@@ -495,8 +495,11 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
   .doc-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
   .doc-table td{border:0;padding:0}
   .doc-table td:first-child{grid-column:1/-1}
-  .doc-table td:nth-child(5){display:none}
+  .doc-table td:nth-child(6){display:none}
   .doc-table td:last-child{grid-column:1/-1}
   .row-actions{justify-content:flex-start}
   .audit-list li{grid-template-columns:1fr;gap:2px}
 }
+
+.send-state{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px}
+.send-state small{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
