@@ -20,7 +20,7 @@ describe('Formulário 26', () => {
       expect(text).toContain('Contato telefônico: (63) 9 9999-0000');
       expect(text).toContain('Projeto/convênio:');
       expect(text).toContain('FORMULÁRIO 26');
-      expect(text).toContain('Cidade/UF origem: ____');
+      expect(text).toContain('Cidade/UF origem: Palmas/TO');
       expect(text).toContain('Cidade/UF destino: ____');
       expect(text).toContain('Saída: ____/____/________');
       expect(text).toContain('Retorno: ____/____/________');

@@ -65,7 +65,7 @@ export default function TravelReportEditor() {
           <h3 style={{ fontSize: 18, marginBottom: 14 }}>Identificação do afastamento</h3>
           <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0 }}>
             <div className="grid-form">
-              <label className="field">Cidade/UF de origem<input value={r.origin} onChange={(e) => set({ origin: e.target.value })} placeholder="Palmas/TO" /></label>
+              <label className="field">Cidade/UF de origem<input value={r.origin} onChange={(e) => set({ origin: e.target.value })} placeholder="Palmas/TO" /><small>Padrão: Palmas/TO</small></label>
               <label className="field">Cidade/UF de destino<input value={r.destination} onChange={(e) => set({ destination: e.target.value })} placeholder="Lagoa da Confusão/TO" /></label>
               <label className="field">Saída<input type="date" value={r.departureDate ?? ''} onChange={(e) => set({ departureDate: e.target.value || null })} /></label>
               <label className="field">Retorno<input type="date" value={r.returnDate ?? ''} min={r.departureDate ?? undefined} onChange={(e) => set({ returnDate: e.target.value || null })} /></label>
