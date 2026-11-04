@@ -170,7 +170,7 @@ describe('signed exports', () => {
       expect(text).toContain('ASSINADO ELETRONICAMENTE POR:');
       expect(text).toContain('ELIANE MARQUES');
       expect(text).toContain(`Hash: ${'b'.repeat(64)}`);
-      expect(text).toContain('Data e hora: 04/11/2026 às 12:30:00 (horário de Brasília)');
+      expect(text).toMatch(/ELIANE MARQUES\s+·\s+04\/11\/2026 às 12:30:00/);
       expect(text).toContain('IP da máquina: 200.10.20.30');
       expect(text).toContain('BENEFICIÁRIO');
       expect(text).toContain('COORDENAÇÃO DO PROJETO');

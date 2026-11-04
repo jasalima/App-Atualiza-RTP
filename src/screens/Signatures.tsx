@@ -20,13 +20,12 @@ function Seal({ s }: { s: SignatureSigner }) {
   return <div className="seal" data-tone={tone}>
     <div className="seal-band">{`${role} • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • `.repeat(3)}</div>
     <div className="seal-body">
-      <img src={`/seal-${tone}.png`} alt="" width={52} height={52} />
+      <img src={`/seal-${tone}.png`} alt="" width={40} height={40} />
       <div>
         <small>ASSINADO ELETRONICAMENTE POR:</small>
-        <b>{s.name.toLocaleUpperCase('pt-BR')}</b>
+        <b>{s.name.toLocaleUpperCase('pt-BR')}<em>{s.signedAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(s.signedAt)).replace(',', ' às') : ''}</em></b>
         <code>Hash: {s.signatureHash}</code>
-        <span>Data e hora: {s.signedAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(s.signedAt)).replace(',', ' às') : ''} (horário de Brasília)</span>
-        <span>IP da máquina: {s.ip || 'não informado'}</span>
+        <span>IP da máquina: {s.ip || 'não informado'} · horário de Brasília</span>
       </div>
     </div>
     <div className="seal-micro">{'RTP INTELIGENTE • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • '.repeat(4)}</div>

@@ -179,7 +179,7 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const signRow = (label: string, step: number) => {
       const signed = fill.signatures?.signers.find((x) => x.step === step);
       if (!signed) return row('Data:', label, 52, true, true);
-      h = 90; fits(h); box(h);
+      h = 76; fits(h); box(h);
       font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 28, { width: c1 - 2 * pad });
       font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
       // Banknote-style seal: green for the beneficiary, gold for the coordination.

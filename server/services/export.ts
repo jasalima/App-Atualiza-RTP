@@ -115,7 +115,7 @@ export function toPdf(c: ReportContent, signatures?: SignatureManifest | null): 
       // One banknote-style seal per signer, centred under the closing.
       const sw = Math.min(width, 380);
       for (const x of signatures.signers) {
-        if (doc.y + 90 > bottom()) doc.addPage();
+        if (doc.y + 72 > bottom()) doc.addPage();
         doc.y += 12;
         doc.y += sealPdf(doc, x, { x: left + (width - sw) / 2, y: doc.y, width: sw, regular: 'Helvetica', bold: 'Helvetica-Bold' });
       }
