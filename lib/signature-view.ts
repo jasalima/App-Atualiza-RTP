@@ -12,10 +12,12 @@ export const requestView = (r: Record<string, unknown>, signers: Array<SignerRow
 });
 
 /** WhatsApp text with the signing link for the person whose turn it is. */
-export function signatureMessage(o: { name: string; label: string; link: string; firstAccess: boolean; from: { name: string; role: string } }) {
+export function signatureMessage(o: { name: string; label: string; link: string; firstAccess: boolean; from: { name: string; role: string }; signedBy?: string[] }) {
   return [
     `Olá, ${o.name.split(/\s+/)[0]}! Esta mensagem é automática.`,
-    `O documento ${o.label} aguarda a sua assinatura eletrônica.`,
+    o.signedBy?.length
+      ? `O documento ${o.label} já foi assinado por ${o.signedBy.join(' e ')} e agora aguarda a sua assinatura eletrônica. Segue em anexo a versão com a assinatura registrada.`
+      : `O documento ${o.label} aguarda a sua assinatura eletrônica.`,
     '',
     `Para ler, ajustar se necessário e assinar sem baixar nada, acesse: ${o.link}`,
     o.firstAccess ? 'Entre com o seu e-mail e a senha temporária enviada pela coordenação; no primeiro acesso você criará a sua senha definitiva.' : 'Entre com o seu e-mail e a sua senha do RTP Inteligente.',

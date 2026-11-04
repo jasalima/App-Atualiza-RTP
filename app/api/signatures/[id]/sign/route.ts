@@ -1,6 +1,8 @@
+import { after } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { clientIp, documentSource, normalizeCpf, requestAccess, sha256 } from '@/lib/signatures';
+import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 
@@ -44,6 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         jsonb_build_object('step',${me.step}::int,'documentHash',${source.hash}::text,'signatureHash',${signatureHash}::text,'ip',${ip}::text) WHERE ${mine}`
     ]) as unknown as Array<Array<{ id: string }>>;
     if (!updated.length) throw fail('Assinatura já registrada ou solicitação alterada. Atualize a página.', 409);
+    // Next signer (or, at the end, the archive and the requester) is served after the response.
+    after(() => dispatchAfterSignature(id).catch((error) => console.error('signature dispatch', id, error)));
     return Response.json({ signed: true, signedAt, signatureHash, documentHash: source.hash, completed: !next, verificationCode: next ? null : code });
   } catch (error) { return travelError(error); }
 }

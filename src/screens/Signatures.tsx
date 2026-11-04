@@ -48,12 +48,18 @@ export function SignaturePanel({ kind, sourceId, scholarId, dirty, onLock }: { k
           {canManage && <button className="btn btn-block" disabled={busy} onClick={() => notify(current)}><Send />Enviar link pelo WhatsApp</button>}
           <NavLink className="btn btn-block" to={`/assinar/${current.id}`}><ExternalLink />Abrir página de assinatura</NavLink>
         </div>}
-        {current.status === 'completed' && <NavLink className="btn btn-block" to={`/verificar/${current.verificationCode}`}><ShieldCheck />Ver comprovante de verificação</NavLink>}
+        {current.status === 'completed' && <div style={{ display: 'grid', gap: 8 }}>
+          <a className="btn btn-go btn-block" href={signatures.fileUrl(current.id, 'pdf')} target="_blank" rel="noreferrer"><Download />Baixar PDF assinado</a>
+          <a className="btn btn-block" href={signatures.fileUrl(current.id, 'docx')}><Download />DOCX com assinaturas</a>
+          <NavLink className="btn btn-block" to={`/verificar/${current.verificationCode}`}><ShieldCheck />Ver comprovante de verificação</NavLink>
+          <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Uma cópia em PDF também foi salva em Documentos, na categoria Relatório.</p>
+        </div>}
         {canManage && <button className="btn btn-quiet btn-block" disabled={busy} onClick={() => cancel(current)}>{current.status === 'completed' ? 'Cancelar assinaturas para alterar' : 'Cancelar solicitação'}</button>}
         {locked && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Com assinatura registrada, o conteúdo fica bloqueado: qualquer mudança invalidaria o hash assinado.</p>}
       </> : <>
         {last && <Notice tone={last.status === 'rejected' ? 'crit' : 'info'} title={last.status === 'rejected' ? 'Assinatura recusada' : 'Solicitação anterior cancelada'}>{last.closedReason}</Notice>}
         <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>O membro assina primeiro e a coordenação em seguida, pelo link, sem baixar o documento. Cada assinatura registra nome, CPF, data, hora, IP e o hash SHA-256 do conteúdo.</p>
+        <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>O envio é automático pelo seu WhatsApp: assim que o membro assina, a coordenação recebe o PDF com a assinatura e o link; quando a coordenação assina, você recebe o PDF final para anexar na prestação de contas da FAPTO.</p>
         {canManage ? <button className="btn btn-primary btn-block" disabled={dirty} onClick={() => setOpening(true)}><PenLine />Solicitar assinaturas</button> : <p className="muted" style={{ fontSize: 13 }}>A coordenação abre a solicitação de assinatura.</p>}
         {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de solicitar.</p>}
       </>}

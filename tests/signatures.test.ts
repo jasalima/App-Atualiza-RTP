@@ -4,7 +4,9 @@ import pdfParse from 'pdf-parse';
 
 // SQL mock: each tagged call is answered by the first handler whose pattern matches the query text.
 type Handler = [RegExp, (values: unknown[]) => unknown];
-const mocks = vi.hoisted(() => ({ handlers: [] as Array<[RegExp, (values: unknown[]) => unknown]>, calls: [] as Array<{ q: string; values: unknown[] }>, user: vi.fn(), transaction: vi.fn() }));
+const mocks = vi.hoisted(() => ({ handlers: [] as Array<[RegExp, (values: unknown[]) => unknown]>, calls: [] as Array<{ q: string; values: unknown[] }>, user: vi.fn(), transaction: vi.fn(), after: vi.fn() }));
+vi.mock('next/server', () => ({ after: mocks.after }));
+vi.mock('../lib/signature-dispatch', () => ({ dispatchAfterSignature: vi.fn(async () => {}) }));
 vi.mock('../lib/db', () => {
   const sql = Object.assign((strings: TemplateStringsArray, ...values: unknown[]) => {
     const q = strings.join('?');
@@ -46,7 +48,7 @@ function db(o: { signers: ReturnType<typeof signer>[]; profile?: string; role?: 
 const post = (cpf = '529.982.247-25') => sign(new Request(`https://app.example/api/signatures/${requestId}/sign`, { method: 'POST', headers: { origin: 'https://app.example', 'x-forwarded-for': '200.10.20.30, 10.0.0.1', 'user-agent': 'Vitest' }, body: JSON.stringify({ cpf, accept: true }) }), { params: Promise.resolve({ id: requestId }) });
 
 beforeEach(() => {
-  mocks.calls.length = 0; mocks.transaction.mockReset();
+  mocks.calls.length = 0; mocks.transaction.mockReset(); mocks.after.mockReset();
   mocks.transaction.mockResolvedValue([[{ id: 'signer-1' }], [], [], []]);
   mocks.user.mockReturnValue({ user: { id: 'user-1', email: 'eliane@example.com' } });
 });
@@ -93,6 +95,8 @@ describe('signing', () => {
     expect(update.values).toContain('52998224725');
     expect(update.values).toContain('200.10.20.30');
     expect(mocks.calls.some((c) => /UPDATE signature_signers SET status='pending'/.test(c.q) && c.values.includes('signer-2'))).toBe(true);
+    // The next signer is notified after the response, not while the signer waits.
+    expect(mocks.after).toHaveBeenCalledTimes(1);
   });
   it('completes the request with a verification code on the last signature', async () => {
     mocks.user.mockReturnValue({ user: { id: 'user-2' } });
@@ -111,6 +115,7 @@ describe('signing', () => {
     db({ signers: [signer(1, 'pending'), signer(2, 'waiting')] });
     expect((await post()).status).toBe(409);
     expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
     mocks.user.mockReturnValue({ user: { id: 'user-1' } });
     db({ signers: [signer(1, 'pending'), signer(2, 'waiting')] });
     mocks.transaction.mockResolvedValue([[], [], [], []]);

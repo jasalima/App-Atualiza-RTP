@@ -6,6 +6,8 @@ import { beneficiaryOf, travelFill, travelReportById, type TravelPhoto } from '.
 import type { SignatureManifest } from '../server/services/signature-stamp';
 import type { TravelFill } from '../server/services/travel-export';
 import type { ReportContent } from '../server/types';
+import { toDocx, toPdf } from '../server/services/export';
+import { travelFile } from './travel';
 
 export type SignatureKind = 'travel' | 'rtp';
 export const APP_URL = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'https://atualizaprojeto.vercel.app');
@@ -122,4 +124,11 @@ export async function signerCandidates(projectId: string) {
     scholarId: r.scholar_id ? String(r.scholar_id) : null, roleLabel: String(r.role_area ?? '').trim() || ROLE_LABEL[String(r.role)] || '',
     phone: r.phone ? String(r.phone) : '', pendingFirstAccess: Boolean(r.must_change_password)
   }));
+}
+
+/** The document as a file, with the signatures collected so far. */
+export async function signedFile(source: Awaited<ReturnType<typeof documentSource>>, format: 'pdf' | 'docx') {
+  if (source.travel) return travelFile(source.travel.beneficiary, format, await fullTravelFill(source.travel.report));
+  const signatures = await signatureManifest('rtp', source.sourceId);
+  return { buffer: await (format === 'pdf' ? toPdf(source.rtp!.content, signatures) : toDocx(source.rtp!.content, signatures)), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: `RTP-${source.rtp!.number.replace(/[^a-z0-9-]/gi, '_')}.${format}` };
 }
