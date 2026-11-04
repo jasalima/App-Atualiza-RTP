@@ -36,7 +36,7 @@ export function signatureMessage(o: { name: string; label: string; link: string;
     `Olá, ${o.name.split(/\s+/)[0]}! 👋 Esta mensagem é automática.`,
     '',
     `📄 *Documento:* ${o.label}`,
-    signedBy.length ? `🖊️ Já assinado por *${signedBy.join('* e *')}*. Segue em anexo a versão com ${signedBy.length > 1 ? 'as assinaturas registradas' : 'a assinatura registrada'}.` : '🖊️ O documento aguarda a sua assinatura.',
+    signedBy.length ? `🖊️ Já assinado por *${signedBy.join('* e *')}*. Segue em anexo a versão com ${signedBy.length > 1 ? 'as assinaturas registradas' : 'a assinatura registrada'}.` : '🖊️ O documento aguarda a sua assinatura. Segue em anexo para leitura.',
     '',
     RULE,
     ...(o.signers?.length ? [stagesText(o.signers, { completed: false, currentStep: o.currentStep }), RULE] : []),

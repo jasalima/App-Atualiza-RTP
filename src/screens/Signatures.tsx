@@ -77,7 +77,7 @@ export function SignaturePanel({ kind, sourceId, scholarId, dirty, onLock }: { k
       </> : <>
         {last && <Notice tone={last.status === 'rejected' ? 'crit' : 'info'} title={last.status === 'rejected' ? 'Assinatura recusada' : 'Solicitação anterior cancelada'}>{last.closedReason}</Notice>}
         <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>O membro assina primeiro e a coordenação em seguida, pelo link, sem baixar o documento. Cada assinatura registra nome, CPF, data, hora, IP e o hash SHA-256 do conteúdo.</p>
-        <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>O envio é automático pelo seu WhatsApp: assim que o membro assina, a coordenação recebe o PDF com a assinatura e o link; quando a coordenação assina, você recebe o PDF final para anexar na prestação de contas da FAPTO.</p>
+        <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>O envio é automático pelo seu WhatsApp: ao solicitar, o membro recebe o documento e o link; assim que ele assina, a coordenação recebe o PDF com a assinatura; quando a coordenação assina, você recebe o PDF final para anexar na prestação de contas da FAPTO.</p>
         {canManage ? <button className="btn btn-primary btn-block" disabled={dirty} onClick={() => setOpening(true)}><PenLine />Solicitar assinaturas</button> : <p className="muted" style={{ fontSize: 13 }}>A coordenação abre a solicitação de assinatura.</p>}
         {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de solicitar.</p>}
       </>}

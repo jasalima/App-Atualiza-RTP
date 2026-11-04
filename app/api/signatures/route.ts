@@ -1,8 +1,10 @@
+import { after } from 'next/server';
 import { z } from 'zod';
 import { requireProject, requireUser } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { documentSource, signLink, signerCandidates, type SignerRow } from '@/lib/signatures';
 import { requestView } from '@/lib/signature-view';
+import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 
@@ -54,6 +56,8 @@ export async function POST(request: Request) {
       if ((error as { code?: string }).code === '23505') throw Object.assign(new Error('Este documento já tem uma solicitação de assinatura em andamento.'), { status: 409 });
       throw error;
     }
+    // The first signer (usually the beneficiary) receives the document and the link right away.
+    after(() => dispatchAfterSignature(id).catch((error) => console.error('signature dispatch', id, error)));
     return Response.json({ id, link: signLink(id) }, { status: 201 });
   } catch (error) { return travelError(error); }
 }

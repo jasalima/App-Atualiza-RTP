@@ -43,6 +43,8 @@ export async function dispatchAfterSignature(requestId: string) {
   const next = signers.find((s) => s.status === 'pending');
   const target = completed ? owner : next ? people.find((p) => p.authUserId === next.auth_user_id) : undefined;
   if (!target) return;
+  // Whoever opened the request and signs next is already in the app: no message to themselves.
+  if (!completed && target.authUserId === creator) return;
   if (!target.phone) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Destinatário sem telefone cadastrado.' });
   const connection = await ownWhatsApp(projectId, creator);
   if (!connection) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Quem abriu a solicitação não conectou o WhatsApp.' });

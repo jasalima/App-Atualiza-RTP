@@ -32,9 +32,20 @@ export async function sender(session: Session, projectId: string) {
 /** WhatsApp text that goes with a travel accountability report. */
 export async function accountabilityMessage(session: Session, projectId: string, label: string) {
   const from = await sender(session, projectId);
+  const rule = '━━━━━━━━━━━━━━━';
   return [
-    `Olá, esta mensagem é automática. Por favor, assine o documento ${label} e devolva-o em PDF.`,
-    'Lembramos que é necessário inserir o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico".',
+    '📝 *PRESTAÇÃO DE CONTAS* · RTP Inteligente',
+    '',
+    'Olá! 👋 Esta mensagem é automática.',
+    '',
+    `📄 *Documento:* ${label}`,
+    '',
+    rule,
+    '📋 *Etapas*',
+    '✍️ 1. Assine o documento anexo',
+    '📤 2. Devolva-o em PDF',
+    '📸 3. Insira o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico"',
+    rule,
     '',
     'Atenciosamente,',
     `*${from.name}*`,

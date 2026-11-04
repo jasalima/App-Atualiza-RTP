@@ -45,6 +45,24 @@ describe('after each signature', () => {
     expect(caption).toContain('senha temporária');
     expect(mocks.put).not.toHaveBeenCalled();
   });
+  it('sends the beneficiary the document and the stages as soon as the request opens', async () => {
+    mocks.load.mockResolvedValue({ request: { ...request('pending'), created_by: 'coord' }, signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'pending'), signer(2, 'coord', 'Francisco Gilson Rebouças Porto Junior', 'waiting')] });
+    mocks.own.mockResolvedValue({ instance: 'Gesproject-coord', token: 'k' });
+    await dispatchAfterSignature('req');
+    const [instance, , , number, caption] = mocks.send.mock.calls[0];
+    expect(instance).toBe('Gesproject-coord');
+    expect(number).toBe('5563984031162');
+    expect(caption).toContain('✍️ *ASSINATURA ELETRÔNICA*');
+    expect(caption).toContain('Olá, Jaasiel!');
+    expect(caption).toContain('✍️ 1. Jaasiel Nascimento Lima — Beneficiário');
+    expect(caption).toContain('⏳ 2. Francisco Gilson Rebouças Porto Junior — Coordenação');
+    expect(caption).toContain('⏳ 3. PDF assinado enviado à administração');
+  });
+  it('does not message whoever opened the request when it is their own turn', async () => {
+    mocks.load.mockResolvedValue({ request: request('pending'), signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'pending'), signer(2, 'coord', 'Francisco', 'waiting')] });
+    await dispatchAfterSignature('req');
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
   it('archives the signed PDF and sends it to whoever opened the request', async () => {
     mocks.load.mockResolvedValue({ request: request('completed'), signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'signed'), signer(2, 'coord', 'Francisco Gilson Rebouças Porto Junior', 'signed')] });
     await dispatchAfterSignature('req');
