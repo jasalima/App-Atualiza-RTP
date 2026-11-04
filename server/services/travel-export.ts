@@ -1,7 +1,7 @@
 import { AlignmentType, BorderStyle, Document, HeightRule, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, Tab, TabStopType, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
-import { manifestDocx, manifestPdf, signedDate, stampLine, type SignatureManifest } from './signature-stamp';
+import { manifestDocx, manifestPdf, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
 
 export type TravelBeneficiary = { name: string; phone: string; email: string; project: string; role: string };
 /** Filled travel data; absent fields stay as blank lines for handwriting. */
@@ -62,7 +62,7 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     alignment: o.center ? AlignmentType.CENTER : AlignmentType.LEFT, spacing: { before: 0, after: o.after ?? 200, line: 240 },
     children: texts.map((text, i) => new TextRun({ text, bold: o.bold, font: FONT, size: SIZE, break: i ? 1 : 0 }))
   });
-  const cell = (children: Paragraph[], o: { span?: number; width: number; bottom?: boolean } ) => new TableCell({
+  const cell = (children: Array<Paragraph | Table>, o: { span?: number; width: number; bottom?: boolean } ) => new TableCell({
     columnSpan: o.span, width: { size: o.width, type: WidthType.DXA }, verticalAlign: o.bottom ? VerticalAlign.BOTTOM : VerticalAlign.TOP,
     margins: { top: 0, bottom: 60, left: 108, right: 108 }, children
   });
@@ -72,7 +72,7 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     return new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
       cell([inCell(signed ? `Data: ${signedDate(signed.signedAt)}` : 'Data:')], { width: DATE_COL, bottom: true }),
       cell(signed
-        ? [para(label, { after: 40 }), new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: stampLine(signed), italics: true, font: FONT, size: SIZE - 4 })] }), new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: `Hash: ${signed.signatureHash.slice(0, 32)}…`, font: FONT, size: SIZE - 6, color: '595959' })] })]
+        ? [para(label, { after: 60 }), sealDocx(signed, { font: FONT, width: ACT_COL - 216 }), para('', { after: 0 })]
         : [para([{ text: `${label} ` }, { text: SIGN_LINE(label) }], { after: 0 })], { width: ACT_COL, bottom: true })
     ] });
   };
@@ -179,11 +179,11 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const signRow = (label: string, step: number) => {
       const signed = fill.signatures?.signers.find((x) => x.step === step);
       if (!signed) return row('Data:', label, 52, true, true);
-      h = 52; fits(h); box(h);
-      font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 17, { width: c1 - 2 * pad });
+      h = 90; fits(h); box(h);
+      font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 28, { width: c1 - 2 * pad });
       font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
-      doc.font('Helvetica-Oblique').fontSize(8.5).text(stampLine(signed), tx + c1 + pad, y + 20, { width: tw - c1 - 2 * pad });
-      doc.font('Helvetica').fontSize(7).fillColor('#595959').text(`Hash: ${signed.signatureHash.slice(0, 32)}…`, tx + c1 + pad, y + 36, { width: tw - c1 - 2 * pad }).fillColor('black');
+      // Banknote-style seal: green for the beneficiary, gold for the coordination.
+      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + 16, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold' });
       y += h;
     };
     signRow('Assinatura do beneficiário:', 1);
@@ -191,7 +191,8 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
 
     doc.y = y + 4;
     const notesH = TRAVEL_NOTES.reduce((s, n) => s + font().heightOfString(`Observações: ${n}`, { width: w, lineGap: 1 }), 0);
-    if (doc.y + notesH > bottom) { doc.addPage(); doc.y = 31; }
+    // Signed rows are taller: keep the notes together only when they fit on a fresh page anyway.
+    if (doc.y + notesH > bottom && !fill.signatures?.signers.length) { doc.addPage(); doc.y = 31; }
     font(true).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: 1 }); font().text(` ${TRAVEL_NOTES[0]}`, { lineGap: 1 });
     for (const n of TRAVEL_NOTES.slice(1)) font().text(n, x, doc.y, { width: w, lineGap: 1 });
 

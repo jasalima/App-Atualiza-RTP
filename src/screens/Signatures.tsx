@@ -14,6 +14,25 @@ const formatCpf = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 11); 
 const formatPhone = (raw: string) => { let d = raw.replace(/\D/g, ''); if (d.length >= 12 && d.startsWith('55')) d = d.slice(2); return d.length === 11 ? `(${d.slice(0, 2)}) ${d[2]} ${d.slice(3, 7)}-${d.slice(7)}` : raw; };
 const br = (d: string | null) => d ? d.split('-').reverse().join('/') : '____/____/______';
 
+/** Banknote-style seal, as printed on the document: green for the beneficiary, gold for the coordination. */
+function Seal({ s }: { s: SignatureSigner }) {
+  const tone = s.step === 1 ? 'member' : 'coordination', role = s.step === 1 ? 'BENEFICIÁRIO' : 'COORDENAÇÃO DO PROJETO';
+  return <div className="seal" data-tone={tone}>
+    <div className="seal-band">{`${role} • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • `.repeat(3)}</div>
+    <div className="seal-body">
+      <img src={`/seal-${tone}.png`} alt="" width={52} height={52} />
+      <div>
+        <small>ASSINADO ELETRONICAMENTE POR:</small>
+        <b>{s.name.toLocaleUpperCase('pt-BR')}</b>
+        <code>Hash: {s.signatureHash}</code>
+        <span>Data e hora: {s.signedAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(s.signedAt)).replace(',', ' às') : ''} (horário de Brasília)</span>
+        <span>IP da máquina: {s.ip || 'não informado'}</span>
+      </div>
+    </div>
+    <div className="seal-micro">{'RTP INTELIGENTE • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • '.repeat(4)}</div>
+  </div>;
+}
+
 /** Order of signers with their state. */
 function Steps({ signers }: { signers: SignatureSigner[] }) {
   return <ol className="sign-steps">{signers.map((s) => { const [text, tone] = signerText[s.status]; return <li key={s.id} data-status={s.status}>
@@ -142,7 +161,7 @@ export function MySignatures() {
 function Form26Preview({ view }: { view: SigningView & { document: { kind: 'travel' } } }) {
   const { beneficiary: b, report: r } = view.document, s = view.request.signers;
   const rows = r.entries.filter((e) => e.date || e.activity.trim());
-  const stamp = (step: number) => { const x = s.find((y) => y.step === step && y.status === 'signed'); return x ? <em className="paper-stamp">Assinado eletronicamente por {x.name} em {when(x.signedAt)}</em> : <span className="paper-line" />; };
+  const stamp = (step: number) => { const x = s.find((y) => y.step === step && y.status === 'signed'); return x ? <Seal s={x} /> : <span className="paper-line" />; };
   return <article className="paper paper-sans" aria-label="Documento a assinar">
     <header className="paper-head"><img src="/fapto-logo.png" alt="FAPTO" /><b>FUNDAÇÃO DE APOIO CIENTÍFICO E TECNOLÓGICO DO TOCANTINS</b><b>FORMULÁRIO 26<br />RELATÓRIO DE VIAGEM</b></header>
     <h4>IDENTIFICAÇÃO DO BENEFICIÁRIO</h4>

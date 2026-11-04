@@ -20,7 +20,7 @@ export type DeliveryStatus={kind:'rtp'|'travel'|'document';id:string;sentAt:stri
 export type DocumentDetail={document:ProjectDocument;versions:ProjectDocument[];deliveries:Array<{status:string;format:string;recipient:string;createdAt:string}>;audit:Array<{action:string;created_at:string;who:string;metadata:Record<string,unknown>}>};
 
 export type SignerStatus='waiting'|'pending'|'signed'|'rejected';
-export type SignatureSigner={id:string;step:number;name:string;roleLabel:string;status:SignerStatus;signedAt:string|null;cpf:string|null;rejectReason:string|null};
+export type SignatureSigner={id:string;step:number;name:string;roleLabel:string;status:SignerStatus;signedAt:string|null;cpf:string|null;rejectReason:string|null;signatureHash?:string|null;ip?:string|null};
 export type SignatureRequest={id:string;projectId:string;kind:'travel'|'rtp';sourceId:string;label:string;status:'pending'|'completed'|'rejected'|'cancelled';createdAt:string;completedAt:string|null;verificationCode:string|null;documentHash:string|null;closedReason:string|null;link:string;signers:SignatureSigner[]};
 export type MySignature=SignatureRequest&{projectTitle:string;myStatus:SignerStatus;myStep:number};
 export type SignerCandidate={authUserId:string;role:Role;email:string;name:string;scholarId:string|null;roleLabel:string;phone:string;pendingFirstAccess:boolean};

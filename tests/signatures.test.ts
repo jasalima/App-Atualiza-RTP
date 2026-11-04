@@ -166,6 +166,14 @@ describe('signed exports', () => {
       expect(text).toContain('Assinado eletronicamente por Francisco Gilson');
       expect(text).toContain('MANIFESTO DE ASSINATURAS ELETRÔNICAS');
       expect(text).toContain('ABCD-1234-EF56');
+      // Banknote-style seals: five audit lines, green beneficiary and gold coordination.
+      expect(text).toContain('ASSINADO ELETRONICAMENTE POR:');
+      expect(text).toContain('ELIANE MARQUES');
+      expect(text).toContain(`Hash: ${'b'.repeat(64)}`);
+      expect(text).toContain('Data e hora: 04/11/2026 às 12:30:00 (horário de Brasília)');
+      expect(text).toContain('IP da máquina: 200.10.20.30');
+      expect(text).toContain('BENEFICIÁRIO');
+      expect(text).toContain('COORDENAÇÃO DO PROJETO');
       expect(text).toContain('***.982.247-**');
       expect(text).toContain('200.10.20.30');
       expect(text).not.toContain('52998224725');

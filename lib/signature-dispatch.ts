@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { evolutionForProject } from './connectivity-config';
 import { sql } from './db';
 import { documentSource, loadRequest, signedFile, signerCandidates, signLink, verifyLink } from './signatures';
-import { signatureMessage } from './signature-view';
+import { completedMessage, signatureMessage } from './signature-view';
 import { putPrivateObject } from './storage';
 import { ownWhatsApp } from './whatsapp-connections';
 
@@ -50,14 +50,8 @@ export async function dispatchAfterSignature(requestId: string) {
   if (await provider.state(connection.instance, connection.token) !== 'open') return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'WhatsApp de quem abriu a solicitação está desconectado.' });
 
   const caption = completed
-    ? [
-        `Olá, ${target.name.split(/\s+/)[0]}! Esta mensagem é automática.`,
-        `O documento ${source.label} foi assinado por todos: ${signed.map((s) => s.name).join(' e ')}.`,
-        `Código de verificação: ${request.verification_code} (${verifyLink(String(request.verification_code))})`,
-        '',
-        'Segue o PDF assinado para anexar à prestação de contas no sistema da FAPTO. Ele também está salvo em Documentos, no RTP Inteligente.'
-      ].join('\n')
-    : signatureMessage({ name: next!.name, label: source.label, link: signLink(requestId), firstAccess: target.pendingFirstAccess, from, signedBy: signed.map((s) => s.name) });
+    ? completedMessage({ name: target.name, label: source.label, code: String(request.verification_code), verifyUrl: verifyLink(String(request.verification_code)), signers })
+    : signatureMessage({ name: next!.name, label: source.label, link: signLink(requestId), firstAccess: target.pendingFirstAccess, from, signers, currentStep: next!.step });
   const file = { ...pdf, filename: completed ? pdf.filename.replace(/\.pdf$/, '-assinado.pdf') : pdf.filename };
   const result = await provider.sendDocument(connection.instance, connection.token, file, digits(target.phone), caption);
   await log(projectId, creator, requestId, completed ? 'send_signed' : 'notify_signer', { to: `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });

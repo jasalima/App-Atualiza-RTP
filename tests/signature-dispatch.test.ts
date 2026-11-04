@@ -19,7 +19,7 @@ vi.mock('../lib/signatures', () => ({
 import { dispatchAfterSignature } from '../lib/signature-dispatch';
 
 const request = (status: string) => ({ id: 'req', project_id: 'project', source_kind: 'travel', source_id: 'report', created_by: 'admin', status, verification_code: status === 'completed' ? 'ABCD-1234-EF56' : null, archived_document_id: null });
-const signer = (step: number, id: string, name: string, status: string) => ({ id: `s${step}`, step, auth_user_id: id, name, status });
+const signer = (step: number, id: string, name: string, status: string) => ({ id: `s${step}`, step, auth_user_id: id, name, status, signed_at: status === 'signed' ? '2026-11-04T19:16:57Z' : null });
 beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset());
   mocks.query.mockResolvedValue([{ id: 'doc-1' }]);
@@ -37,7 +37,10 @@ describe('after each signature', () => {
     expect(file.filename).toBe('formulario-26-jaasiel.pdf');
     expect(number).toBe('5563984028033');
     expect(caption).toContain('Olá, Francisco!');
-    expect(caption).toContain('já foi assinado por Jaasiel Nascimento Lima');
+    expect(caption).toContain('Já assinado por *Jaasiel Nascimento Lima*');
+    expect(caption).toContain('✅ 1. Jaasiel Nascimento Lima — Beneficiário');
+    expect(caption).toContain('✍️ 2. Francisco Gilson Rebouças Porto Junior — Coordenação');
+    expect(caption).toContain('*aguardando você*');
     expect(caption).toContain('https://app.example/assinar/req');
     expect(caption).toContain('senha temporária');
     expect(mocks.put).not.toHaveBeenCalled();
@@ -50,7 +53,8 @@ describe('after each signature', () => {
     const [, , file, number, caption] = mocks.send.mock.calls[0];
     expect(number).toBe('5563984031162');
     expect(file.filename).toBe('formulario-26-jaasiel-assinado.pdf');
-    expect(caption).toContain('foi assinado por todos');
+    expect(caption).toContain('ASSINADO POR TODOS');
+    expect(caption).toContain('✅ 3. PDF assinado enviado à administração');
     expect(caption).toContain('ABCD-1234-EF56');
     expect(caption).toContain('prestação de contas no sistema da FAPTO');
   });
