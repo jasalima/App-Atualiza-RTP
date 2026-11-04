@@ -6,6 +6,7 @@ vi.mock('../lib/db', () => ({ sql: mocks.query }));
 vi.mock('../lib/storage', () => ({ readPrivateObject: mocks.read }));
 vi.mock('../lib/travel', () => ({ loadTravel: mocks.travel, travelFile: mocks.travelFile, loadTravelReport: mocks.travelReport, travelFill: (r: {destination: string}) => ({ destination: r.destination }) }));
 vi.mock('../server/services/export', () => ({ toPdf: mocks.pdf, toDocx: mocks.docx }));
+vi.mock('../lib/signatures', () => ({ fullTravelFill: async (r: { destination: string }) => ({ destination: r.destination }), signatureManifest: async () => null }));
 import { loadDocumentSource, MAX_DOCUMENT_BYTES, recipientNumber, safeFileName } from '../lib/document-source';
 beforeEach(() => { Object.values(mocks).forEach(mock => mock.mockReset()); mocks.access.mockResolvedValue({ user: {id:'sender'},role:'coordinator',scholarId:null }); });
 const input = { projectId:'project-a',sourceId:'source-a',kind:'rtp' as const,format:'pdf' as const };
@@ -21,7 +22,7 @@ describe('application document authorization', () => {
     const source = await loadDocumentSource(input);
     expect(source.version).toBe(3);
     expect((await source.makeFile()).filename).toBe('RTP-01-2026.pdf');
-    expect(mocks.pdf).toHaveBeenCalledWith({saved:true});
+    expect(mocks.pdf).toHaveBeenCalledWith({saved:true},null);
     const [strings,...values]=mocks.query.mock.calls[0];
     expect(values).toEqual(['source-a','project-a']);
     expect(strings.join('?')).toContain('rv.version=r.current_version');

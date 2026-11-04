@@ -40,6 +40,12 @@ export class Evolution {
     if (typeof id !== 'string' || !id) throw new EvolutionError('O servidor não confirmou o identificador do envio.');
     return { messageId: id };
   }
+  async sendText(instance: string, token: string, number: string, text: string) {
+    const result = await this.call(`/message/sendText/${encodeURIComponent(instance)}`, token, { number, text });
+    const id = result.key?.id;
+    if (typeof id !== 'string' || !id) throw new EvolutionError('O servidor não confirmou o identificador do envio.');
+    return { messageId: id };
+  }
   async ensure(instance: string, token: string) {
     let rows: unknown;
     try { rows = await this.call(`/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`, this.masterKey); }

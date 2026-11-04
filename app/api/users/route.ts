@@ -7,7 +7,7 @@ import { provisionWhatsApp } from '@/lib/whatsapp-connections';
 const input=z.object({
   name:z.string().trim().min(3).max(120),
   email:z.email().trim().toLowerCase(),
-  role:z.enum(['coordinator','scholar']),
+  role:z.enum(['coordinator','scholar','signer']),
   projectId:z.uuid(),
   scholarId:z.uuid().nullable().optional(),
 }).superRefine((value,ctx)=>{
@@ -48,7 +48,7 @@ export async function POST(request:Request){
     const value=parsed.data;
     const [project]=await sql`SELECT id FROM projects WHERE id=${value.projectId}::uuid AND deleted_at IS NULL`;
     if(!project)throw Object.assign(new Error('Projeto não encontrado.'),{status:404});
-    if(value.role==='scholar'){
+    if(value.scholarId&&(value.role==='scholar'||value.role==='signer')){
       const [scholar]=await sql`SELECT id FROM scholars WHERE id=${value.scholarId}::uuid AND project_id=${value.projectId}::uuid AND deleted_at IS NULL`;
       if(!scholar)throw Object.assign(new Error('O bolsista não pertence ao projeto selecionado.'),{status:400});
     }
@@ -61,14 +61,20 @@ export async function POST(request:Request){
           VALUES(${createdUserId},${value.projectId}::uuid,${value.scholarId??null}::uuid,${value.role}::user_role)`,
       value.role==='scholar'
         ? sql`UPDATE scholars SET auth_user_id=${createdUserId} WHERE id=${value.scholarId}::uuid`
-        : sql`SELECT 1`,
+        // A signature-only account takes over the member link only when the member has no other account.
+        : value.role==='signer'&&value.scholarId
+          ? sql`UPDATE scholars SET auth_user_id=${createdUserId} WHERE id=${value.scholarId}::uuid AND auth_user_id IS NULL`
+          : sql`SELECT 1`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata)
           VALUES(${admin.id},${value.projectId}::uuid,'create_user','managed_users',${createdUserId},
             jsonb_build_object('email',${value.email}::text,'role',${value.role}::text))`,
     ]);
     let whatsappProvisioned = false;
-    try { await provisionWhatsApp(value.projectId, createdUserId); whatsappProvisioned = true; }
-    catch { /* Account is committed; coordination can retry provisioning without creating another account. */ }
+    // Signature-only accounts never send documents, so they get no WhatsApp connection.
+    if(value.role!=='signer'){
+      try { await provisionWhatsApp(value.projectId, createdUserId); whatsappProvisioned = true; }
+      catch { /* Account is committed; coordination can retry provisioning without creating another account. */ }
+    }
     return Response.json({userId:createdUserId,temporaryPassword:password,whatsappProvisioned},{status:201,headers:{'Cache-Control':'no-store'}});
   } catch(error) {
     // Compensate an Auth-first signup when the application transaction fails.

@@ -10,7 +10,7 @@ export const fmtPeriod = (a?: string | null, b?: string | null) => `${fmt(a)} a 
 export const today = () => new Date().toISOString().slice(0, 10);
 export const errorText = (x: unknown) => (x as Error)?.message || 'Não foi possível concluir a operação.';
 
-export const roleLabel: Record<Role, string> = { admin: 'Administração', coordinator: 'Coordenação', scholar: 'Bolsista' };
+export const roleLabel: Record<Role, string> = { admin: 'Administração', coordinator: 'Coordenação', scholar: 'Bolsista', signer: 'Somente assinatura' };
 
 type Tone = 'ok' | 'info' | 'warn' | 'crit' | 'mute';
 const statuses: Record<string, [string, Tone]> = {

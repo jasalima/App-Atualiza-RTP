@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BookOpen, FileText, FolderKanban, LayoutGrid, Link2, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
+import { Activity, BookOpen, FileSignature, FileText, FolderKanban, LayoutGrid, Link2, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
 import { neon, prepareDataApi, resetDataApiToken } from './neon';
 import { projects as projectsApi, users } from './api';
 import type { Project, Role, User } from './types';
@@ -20,10 +20,17 @@ import TravelAccountability from './screens/TravelAccountability';
 import TravelReportEditor from './screens/TravelReportEditor';
 import Connectivity from './screens/Connectivity';
 import Documents from './screens/Documents';
+import { MySignatures, SignPage, SignerShell, VerifyPage } from './screens/Signatures';
 import './connectivity.css';
 import { InstallAppButton } from './pwa';
 
 function App() {
+  // Signature verification is public: anyone holding a signed document can check it.
+  if (useLocation().pathname.startsWith('/verificar')) return <ToastProvider><Routes><Route path="/verificar" element={<VerifyPage />} /><Route path="/verificar/:code" element={<VerifyPage />} /></Routes></ToastProvider>;
+  return <Authenticated />;
+}
+
+function Authenticated() {
   const session = neon.auth.useSession();
   const [user, setUser] = useState<User | null>(null);
   const [startupError, setStartupError] = useState(''), [startupAttempt, setStartupAttempt] = useState(0);
@@ -36,7 +43,8 @@ function App() {
     void (async () => {
       const account = await users.me();
       if (!active) return;
-      if (account.role && !account.mustChangePassword) await prepareDataApi();
+      // Signature-only accounts never read project tables directly.
+      if (account.role && account.role !== 'signer' && !account.mustChangePassword) await prepareDataApi();
       if (active) setUser(account);
     })().catch(error => { if (active) setStartupError(errorText(error)); });
     return () => { active = false; };
@@ -47,6 +55,7 @@ function App() {
   if (!authId || !user) return <Login />;
   if (user.mustChangePassword) return <ChangePassword user={user} logout={logout} onDone={()=>setUser({...user,mustChangePassword:false})} />;
   if (!user.role) return <NoAccess user={user} logout={logout} />;
+  if (user.role === 'signer') return <ToastProvider><SignerShell name={user.name} logout={logout} /></ToastProvider>;
   return <ToastProvider><Shell key={user.id} user={user} logout={logout} /></ToastProvider>;
 }
 
@@ -94,6 +103,7 @@ function Aerial() {
 }
 
 function Login() {
+  const signing = useLocation().pathname.startsWith('/assinar');
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
@@ -115,7 +125,7 @@ function Login() {
     <section className="login-form">
       <form onSubmit={submit}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={30} /><span style={{ fontFamily: 'var(--display)', fontStretch: '80%', fontWeight: 650, fontSize: 18 }}>RTP Inteligente</span></div>
-        <div><h2>Entrar</h2><p className="lead">Use o e-mail cadastrado pela coordenação do projeto.</p></div>
+        <div><h2>Entrar</h2><p className="lead">{signing ? 'Entre para ler e assinar o documento enviado a você. No primeiro acesso, use a senha temporária recebida da coordenação.' : 'Use o e-mail cadastrado pela coordenação do projeto.'}</p></div>
         <label className="field">E-mail<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
         <label className="field">Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></label>
         {error && <Notice tone="crit">{error}</Notice>}
@@ -147,7 +157,7 @@ const groups = [
   { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity]] },
   { label: 'Relatar', items: [['/generate', 'Gerar RTP', Sparkles], ['/reports', 'Relatórios', FileText]] },
   { label: 'Prestação de contas', items: [['/travel', 'Diárias e passagens', FileText]] },
-  { label: 'Compartilhar', items: [['/documents', 'Documentos', FileText], ['/connectivity', 'Conectividade', Link2]] }
+  { label: 'Compartilhar', items: [['/documents', 'Documentos', FileText], ['/assinaturas', 'Minhas assinaturas', FileSignature], ['/connectivity', 'Conectividade', Link2]] }
 ] as const;
 
 function Shell({ user, logout }: { user: User; logout: () => void }) {
@@ -207,6 +217,8 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="/travel/:id" element={<TravelReportEditor />} />
               <Route path="/documents" element={<Documents />} />
               <Route path="/connectivity" element={<Connectivity />} />
+              <Route path="/assinaturas" element={<MySignatures />} />
+              <Route path="/assinar/:id" element={<SignPage />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>}
         </main>

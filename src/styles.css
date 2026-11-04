@@ -503,3 +503,64 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
 
 .send-state{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px}
 .send-state small{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+
+/* Assinatura eletrônica */
+.sign-steps{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.sign-steps li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.sign-steps li:last-child{border-bottom:0}
+.sign-steps li div{display:flex;flex-direction:column;min-width:0}
+.sign-steps li b{font-size:14px}
+.sign-steps li small{color:var(--mute);font-size:12.5px;overflow-wrap:anywhere}
+.sign-step-n{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);font-family:var(--display);font-weight:600;font-size:13px;color:var(--ink-2)}
+.sign-steps li[data-status=pending] .sign-step-n{border-color:var(--ochre);color:var(--ochre)}
+.sign-steps li[data-status=signed] .sign-step-n{background:var(--pivot);border-color:var(--pivot);color:#fff}
+.sign-steps li[data-status=rejected] .sign-step-n{border-color:var(--alarm);color:var(--alarm)}
+.sign-step-n svg{width:14px;height:14px}
+.check{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;align-items:start;font-size:13.5px;line-height:1.45;cursor:pointer}
+.check input{margin:2px 0 0;width:16px;height:16px;accent-color:var(--pivot)}
+
+/* Documento exibido para leitura antes de assinar: folha A4 em escala */
+.paper{background:var(--sheet);border:1px solid var(--line);box-shadow:0 1px 0 var(--line-soft),0 10px 30px -18px rgba(18,48,58,.35);padding:clamp(18px,5vw,56px) clamp(16px,6vw,64px);font-size:14px;line-height:1.45;color:#111}
+.paper-sans{font-family:Calibri,Carlito,'Segoe UI',var(--ui)}
+.paper-serif{font-family:var(--doc)}
+.paper p{margin:0 0 10px}
+.paper h4{font-size:14px;font-weight:700;margin:18px 0 10px}
+.paper-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:14px}
+.paper-head img{width:min(183px,45%);height:auto}
+.paper-center{text-align:center}
+.paper-justify{text-align:justify}
+.paper-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+.paper-table th,.paper-table td{border:1px solid #000;padding:5px 7px;vertical-align:top;text-align:left}
+.paper-table thead th{text-align:center}
+.paper-table thead small{display:block;font-weight:400;margin-top:2px}
+.paper-id th{text-align:center}
+.paper-id td:first-child{width:30%}
+.paper-sign td{height:64px;vertical-align:bottom}
+.paper-line{display:inline-block;min-width:40%;border-bottom:1px solid #000;margin-left:6px}
+.paper-stamp{display:block;margin-top:4px;font-size:12.5px;color:var(--pivot)}
+.paper-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.paper-photos figure{margin:0}
+.paper-photos img{width:100%;height:auto;border:1px solid var(--line-soft)}
+.paper-photos figcaption{font-size:12.5px;text-align:center;margin-top:4px}
+
+/* Registro fotográfico no editor */
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.photo-card{margin:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;background:#f7f9f8;display:flex;flex-direction:column}
+.photo-card img,.photo-missing{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--line-soft);display:block}
+.photo-card figcaption{display:grid;gap:4px;padding:8px}
+.photo-card figcaption input{height:32px;font-size:13px}
+.photo-card .row-actions{justify-content:flex-end}
+
+/* Verificação pública */
+.verify{min-height:100vh;display:grid;place-items:start center;padding:clamp(24px,8vh,80px) 16px;background:var(--ground)}
+.verify-card{width:min(640px,100%);background:var(--sheet);border:1px solid var(--line);border-radius:var(--r-md);padding:24px;display:grid;gap:18px}
+
+/* Contas somente de assinatura */
+.signer-shell{min-height:100vh;background:var(--ground)}
+.signer-bar{display:flex;align-items:center;gap:14px;padding:10px clamp(16px,4vw,32px);padding-top:max(10px,env(safe-area-inset-top));background:var(--rail);color:#fff}
+.signer-brand{display:flex;align-items:center;gap:10px;color:#fff;margin-right:auto}
+.signer-brand:hover{text-decoration:none}
+.signer-brand span{display:flex;flex-direction:column;font-family:var(--display);font-stretch:80%;font-weight:650;font-size:17px;line-height:1.1}
+.signer-brand small{font-family:var(--ui);font-stretch:100%;font-weight:400;font-size:12px;color:var(--rail-ink)}
+.signer-user{font-size:13.5px;color:var(--rail-ink)}
+@media (max-width:560px){.signer-user{display:none}}

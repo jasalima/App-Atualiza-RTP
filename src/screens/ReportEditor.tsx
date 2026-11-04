@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Check, Download, RefreshCw, Trash2 } from 'lucide-react';
 import { download, reports as reportsApi } from '../api';
 import type { Report, ReportContent, Validation } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
+import { SignaturePanel } from './Signatures';
 import { Notice, Skeleton, Tag, errorText, fmt, fmtPeriod, statusLabel, useScope, useToast } from '../ui';
 
 type Section = keyof ReportContent['sections'];
@@ -31,6 +32,7 @@ export default function ReportEditor() {
   }
   const [report, setReport] = useState<Report | null>(null), [content, setContent] = useState<ReportContent | null>(null), [error, setError] = useState('');
   const [tab, setTab] = useState<'document' | 'validation' | 'versions'>('document'), [busy, setBusy] = useState<string | null>(null), [compare, setCompare] = useState<number | null>(null);
+  const [signLocked, setSignLocked] = useState(false), onLock = useCallback((v: boolean) => setSignLocked(v), []);
   const load = () => reportsApi.get(id!).then((r) => { setReport(r); setContent(r.content!); }, (x) => setError(errorText(x)));
   useEffect(() => { void load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = !!report && !!content && JSON.stringify(content) !== JSON.stringify(report.content);
@@ -44,7 +46,8 @@ export default function ReportEditor() {
 
   const open = (report.validations ?? []).filter((v) => !v.resolved_at);
   const critical = open.filter((v) => v.severity === 'critical');
-  const locked = !canManage || report.status === 'approved' || report.status === 'exported';
+  // A signed RTP is frozen: editing would invalidate the signed hash.
+  const locked = !canManage || report.status === 'approved' || report.status === 'exported' || signLocked;
   const act = async (key: string, fn: () => Promise<unknown>, done: string) => {
     setBusy(key);
     try { await fn(); await load(); toast(done); } catch (x) { toast(errorText(x), 'crit'); } finally { setBusy(null); }
@@ -98,6 +101,7 @@ export default function ReportEditor() {
       </article></div>
 
       <aside className="side">
+        <SignaturePanel kind="rtp" sourceId={report.id} scholarId={report.scholar_id} dirty={dirty} onLock={onLock} />
         <div className="panel">
           <h3>Situação</h3>
           <ol className="flow-state">{flow.map((s, i) => <li key={s} data-state={i < stage ? 'done' : i === stage ? 'current' : undefined}>{statusLabel(s)}</li>)}</ol>

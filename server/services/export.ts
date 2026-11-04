@@ -2,6 +2,7 @@ import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, Shad
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
 import type { ReportContent } from '../types.js';
+import { manifestDocx, manifestPdf, stampLine, type SignatureManifest } from './signature-stamp';
 
 // Layout of the FAPTO Formulário 9 model: logo, foundation and form name centred;
 // an identification table whose first row reads "RELATÓRIO TÉCNICO PARCIAL (RTP)";
@@ -23,7 +24,7 @@ const idRows = (c: ReportContent): Array<[string, string, { shade?: boolean; bol
 /** Each line of a section is its own paragraph; lines starting with "•" are bullet items. */
 const lines = (text: string) => text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
 
-export async function toDocx(c: ReportContent) {
+export async function toDocx(c: ReportContent, signatures?: SignatureManifest | null) {
   const run = (text: string, opts: { bold?: boolean; size?: number } = {}) => new TextRun({ text, font: FONT, size: opts.size ?? 24, bold: opts.bold });
   const centred = (text: string, bold = true, after = 120) => new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after }, children: [run(text, { bold })] });
   const border = { style: BorderStyle.SINGLE, size: 12, color: FRAME };
@@ -58,13 +59,15 @@ export async function toDocx(c: ReportContent) {
       heading(SECTION_TITLES.additional), ...body(c.sections.additional),
       new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 360, after: 1200 }, children: [run(c.closing.placeAndDate)] }),
       centred(c.closing.scholar, false, 0),
-      centred(c.closing.role, false, 0)
+      centred(c.closing.role, false, 0),
+      ...(signatures?.signers ?? []).map((x, i) => new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: i ? 0 : 240 }, children: [new TextRun({ text: stampLine(x), italics: true, font: FONT, size: 18 })] })),
+      ...(signatures?.signers.length ? manifestDocx(signatures, { font: FONT, size: 24, width: 9071 }) : [])
     ]
   }] });
   return Packer.toBuffer(doc);
 }
 
-export function toPdf(c: ReportContent): Promise<Buffer> {
+export function toPdf(c: ReportContent, signatures?: SignatureManifest | null): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: { top: 57, bottom: 57, left: 85, right: 57 }, bufferPages: true });
     const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
@@ -108,6 +111,11 @@ export function toPdf(c: ReportContent): Promise<Buffer> {
     doc.moveDown(0.8).font('Times-Roman').text(c.closing.placeAndDate, left, doc.y, { width, align: 'right' });
     doc.y += 70;
     doc.text(c.closing.scholar, left, doc.y, { width, align: 'center' }).text(c.closing.role, { width, align: 'center' });
+    if (signatures?.signers.length) {
+      doc.moveDown(0.8);
+      for (const x of signatures.signers) doc.font('Times-Italic').fontSize(9).text(stampLine(x), left, doc.y, { width, align: 'center' });
+      manifestPdf(doc, signatures, { x: left, width, top: 57, regular: 'Times-Roman', bold: 'Times-Bold' });
+    }
     doc.end();
   });
 }

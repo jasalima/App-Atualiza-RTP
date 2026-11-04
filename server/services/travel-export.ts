@@ -1,10 +1,17 @@
 import { AlignmentType, BorderStyle, Document, HeightRule, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, Tab, TabStopType, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
+import { manifestDocx, manifestPdf, signedDate, stampLine, type SignatureManifest } from './signature-stamp';
 
 export type TravelBeneficiary = { name: string; phone: string; email: string; project: string; role: string };
 /** Filled travel data; absent fields stay as blank lines for handwriting. */
-export type TravelFill = { origin?: string; destination?: string; departure?: string | null; returnDate?: string | null; payment?: string | null; objective?: string; entries?: Array<{ date: string; activity: string }> };
+export type TravelFill = { origin?: string; destination?: string; departure?: string | null; returnDate?: string | null; payment?: string | null; objective?: string; entries?: Array<{ date: string; activity: string }>;
+  /** JPEG photos inserted by the member on the "Registro fotográfico" page. */
+  photos?: Array<{ data: Buffer; width: number; height: number; caption: string }>;
+  /** Electronic signatures: stamped on the signature rows and listed on a final manifest page. */
+  signatures?: SignatureManifest | null };
+/** Fits a photo in a box keeping its proportion. */
+const fit = (w: number, h: number, maxW: number, maxH: number) => { const k = Math.min(maxW / w, maxH / h, 1); return { width: Math.round(w * k), height: Math.round(h * k) }; };
 
 const br = (d?: string | null) => d ? d.slice(0, 10).split('-').reverse().join('/') : '____/____/________';
 const blank = '________________________________________________';
@@ -60,10 +67,15 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     margins: { top: 0, bottom: 60, left: 108, right: 108 }, children
   });
   const inCell = (text: string, o: { bold?: boolean; center?: boolean; justify?: boolean } = {}) => para([{ text, bold: o.bold }], { after: 0, center: o.center, justify: o.justify });
-  const signature = (label: string) => new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
-    cell([inCell('Data:')], { width: DATE_COL, bottom: true }),
-    cell([para([{ text: `${label} ` }, { text: SIGN_LINE(label) }], { after: 0 })], { width: ACT_COL, bottom: true })
-  ] });
+  const signature = (label: string, step: number) => {
+    const signed = fill.signatures?.signers.find((x) => x.step === step);
+    return new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
+      cell([inCell(signed ? `Data: ${signedDate(signed.signedAt)}` : 'Data:')], { width: DATE_COL, bottom: true }),
+      cell(signed
+        ? [para(label, { after: 40 }), new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: stampLine(signed), italics: true, font: FONT, size: SIZE - 4 })] }), new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: `Hash: ${signed.signatureHash.slice(0, 32)}…`, font: FONT, size: SIZE - 6, color: '595959' })] })]
+        : [para([{ text: `${label} ` }, { text: SIGN_LINE(label) }], { after: 0 })], { width: ACT_COL, bottom: true })
+    ] });
+  };
   const entries = travelEntries(fill), objective = fill.objective?.trim();
   const logoW = Math.round(LOGO_PT * 96 / 72);
   const year = (fill.departure ?? '').slice(2, 4);
@@ -96,14 +108,19 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
             cell([inCell(d)], { width: DATE_COL }),
             cell(a ? a.split(/\n+/).map((t) => inCell(t, { justify: true })) : [inCell('')], { width: ACT_COL })
           ] })),
-          signature('Assinatura do beneficiário:'),
-          signature('De acordo (Coordenador do projeto):')
+          signature('Assinatura do beneficiário:', 1),
+          signature('De acordo (Coordenador do projeto):', 2)
         ]
       }),
       para([{ text: 'Observações:', bold: true }, { text: ` ${TRAVEL_NOTES[0]}` }], { after: 0 }),
       ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 0 })),
       new Paragraph({ pageBreakBefore: true, alignment: AlignmentType.CENTER, spacing: { before: 0, after: 360 }, children: [new TextRun({ text: PHOTO_TITLE, bold: true, font: FONT, size: SIZE })] }),
-      para('')
+      ...(fill.photos ?? []).flatMap((ph) => [
+        new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 120, after: 60 }, children: [new ImageRun({ type: 'jpg', data: ph.data, transformation: fit(ph.width, ph.height, 520, 330) })] }),
+        para(ph.caption, { center: true, after: 200 })
+      ]),
+      para(''),
+      ...(fill.signatures?.signers.length ? manifestDocx(fill.signatures, { font: FONT, size: SIZE, width: DATE_COL + ACT_COL }) : [])
     ] }]
   }));
 }
@@ -159,8 +176,18 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const entries = travelEntries(fill);
     row('Data', 'Atividades', 23);
     for (const [d, a] of entries) row(d, a, entries.length > 1 ? 21 : 52);
-    row('Data:', 'Assinatura do beneficiário:', 52, true, true);
-    row('Data:', 'De acordo (Coordenador do projeto):', 52, true, true);
+    const signRow = (label: string, step: number) => {
+      const signed = fill.signatures?.signers.find((x) => x.step === step);
+      if (!signed) return row('Data:', label, 52, true, true);
+      h = 52; fits(h); box(h);
+      font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 17, { width: c1 - 2 * pad });
+      font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
+      doc.font('Helvetica-Oblique').fontSize(8.5).text(stampLine(signed), tx + c1 + pad, y + 20, { width: tw - c1 - 2 * pad });
+      doc.font('Helvetica').fontSize(7).fillColor('#595959').text(`Hash: ${signed.signatureHash.slice(0, 32)}…`, tx + c1 + pad, y + 36, { width: tw - c1 - 2 * pad }).fillColor('black');
+      y += h;
+    };
+    signRow('Assinatura do beneficiário:', 1);
+    signRow('De acordo (Coordenador do projeto):', 2);
 
     doc.y = y + 4;
     const notesH = TRAVEL_NOTES.reduce((s, n) => s + font().heightOfString(`Observações: ${n}`, { width: w, lineGap: 1 }), 0);
@@ -170,6 +197,14 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
 
     doc.addPage(); doc.y = 31;
     font(true).text(PHOTO_TITLE, x, doc.y, { width: w, align: 'center' }); doc.y += 18;
+    for (const ph of fill.photos ?? []) {
+      const size = fit(ph.width, ph.height, w, 250), capH = font().heightOfString(ph.caption || ' ', { width: w });
+      if (doc.y + size.height + capH + 16 > bottom) { doc.addPage(); doc.y = 31; }
+      doc.image(ph.data, x + (w - size.width) / 2, doc.y, size); doc.y += size.height + 4;
+      if (ph.caption) font().text(ph.caption, x, doc.y, { width: w, align: 'center' });
+      doc.y += 12;
+    }
+    if (fill.signatures?.signers.length) manifestPdf(doc, fill.signatures, { x, width: w, top: 31, regular: 'Helvetica', bold: 'Helvetica-Bold' });
     doc.end();
   });
 }

@@ -1,5 +1,6 @@
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
+import { signatureManifest } from '@/lib/signatures';
 import { toDocx, toPdf } from '@/server/services/export';
 import type { ReportContent } from '@/server/types';
 
@@ -9,7 +10,8 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string;f
     const rows=await sql`SELECT r.project_id,r.number,r.status,rv.content FROM reports r JOIN report_versions rv ON rv.report_id=r.id AND rv.version=r.current_version WHERE r.id=${id}::uuid`;
     if(!rows[0])return Response.json({error:'Relatório não encontrado.'},{status:404});
     const session=await requireProject(String(rows[0].project_id));
-    const file=format==='docx'?await toDocx(rows[0].content as ReportContent):await toPdf(rows[0].content as ReportContent);
+    const signatures=await signatureManifest('rtp',id);
+    const file=format==='docx'?await toDocx(rows[0].content as ReportContent,signatures):await toPdf(rows[0].content as ReportContent,signatures);
     // Only an approved report becomes "exported"; drafts can be previewed as files without changing status.
     if(rows[0].status==='approved')await sql.transaction(tx=>[
       tx`UPDATE reports SET status='exported' WHERE id=${id}::uuid`,

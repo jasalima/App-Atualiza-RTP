@@ -1,0 +1,33 @@
+import { z } from 'zod';
+import { sql } from '@/lib/db';
+import { evolutionForProject } from '@/lib/connectivity-config';
+import { recipientNumber, sender } from '@/lib/document-source';
+import { requestAccess, signLink, signerCandidates } from '@/lib/signatures';
+import { signatureMessage } from '@/lib/signature-view';
+import { sameOrigin, travelError } from '@/lib/travel';
+import { ownWhatsApp } from '@/lib/whatsapp-connections';
+export const runtime = 'nodejs';
+
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    sameOrigin(request);
+    const { id } = await params, body = z.object({ phone: z.string().max(35).optional() }).parse(await request.json().catch(() => ({})));
+    const access = await requestAccess(id), r = access.request, projectId = String(r.project_id);
+    if (!access.manager) throw Object.assign(new Error('Somente a coordenação envia links de assinatura.'), { status: 403 });
+    if (r.status !== 'pending' || !access.current) throw Object.assign(new Error('Não há assinatura pendente nesta solicitação.'), { status: 409 });
+    const target = (await signerCandidates(projectId)).find((c) => c.authUserId === access.current!.auth_user_id);
+    const phone = body.phone?.trim() || target?.phone || '';
+    if (!phone) throw Object.assign(new Error('O signatário não tem telefone cadastrado. Informe o número para envio.'), { status: 400 });
+    const number = recipientNumber(phone);
+    const connection = await ownWhatsApp(projectId, access.user.id);
+    if (!connection) throw Object.assign(new Error('Conecte seu WhatsApp na seção Conectividade antes de enviar.'), { status: 409 });
+    const provider = await evolutionForProject(projectId);
+    if (await provider.state(connection.instance, connection.token) !== 'open') throw Object.assign(new Error('Seu WhatsApp está desconectado. Abra Conectividade e escaneie o QR Code.'), { status: 409 });
+    const [role] = await sql`SELECT role FROM user_project_access WHERE auth_user_id=${access.user.id} AND (project_id=${projectId}::uuid OR role='admin') ORDER BY (role='admin') DESC LIMIT 1`;
+    const from = await sender({ user: access.user, role: String(role?.role ?? 'coordinator'), scholarId: null }, projectId);
+    const text = signatureMessage({ name: access.current.name, label: String(r.label), link: signLink(id), firstAccess: !!target?.pendingFirstAccess, from });
+    const result = await provider.sendText(connection.instance, connection.token, number, text);
+    await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${access.user.id},${projectId}::uuid,'notify_signer','signature_request',${id},jsonb_build_object('step',${access.current.step}::int,'messageId',${result.messageId}::text))`;
+    return Response.json({ sent: true, to: `•••• ${number.slice(-4)}` });
+  } catch (error) { return travelError(error); }
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sql } from '@/lib/db';
+import { assertUnsigned } from '@/lib/signatures';
 import { loadTravelReport, sameOrigin, travelError, travelReportRow, travelReportUpdate } from '@/lib/travel';
 export const runtime = 'nodejs';
 type Params = { params: Promise<{ id: string }> };
@@ -20,6 +21,7 @@ export async function PUT(request: Request, { params }: Params) {
     const parsed = travelReportUpdate.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || 'Confira os campos informados.' }, { status: 400 });
     const v = parsed.data, { session } = await loadTravelReport(projectId, id, true);
+    await assertUnsigned('travel', id);
     const entries = v.entries.filter((e) => e.date || e.activity.trim());
     const [row] = await sql`UPDATE travel_reports SET origin=${v.origin},destination=${v.destination},departure_date=${v.departureDate}::date,return_date=${v.returnDate}::date,
       payment_date=${v.paymentDate}::date,objective=${v.objective},entries=${JSON.stringify(entries)}::jsonb,status=${v.status},updated_at=now()

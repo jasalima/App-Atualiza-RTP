@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
+import { assertUnsigned } from '@/lib/signatures';
 import { isoDate, loadReportInput } from '@/lib/report-input';
 import { otherReportTexts } from '@/lib/other-reports';
 import { generateDistinct } from '@/server/services/report';
@@ -17,6 +18,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     const report=rows[0];
     if(!report)return Response.json({error:'Relatório não encontrado.'},{status:404});
     const session=await requireProject(String(report.project_id),true);
+    await assertUnsigned('rtp',id);
     const iso=(d:unknown)=>d instanceof Date?isoDate(d):String(d).slice(0,10);
     const input=await loadReportInput({projectId:String(report.project_id),scholarId:String(report.scholar_id),periodStart:iso(report.period_start),periodEnd:iso(report.period_end),number:String(report.number),issuedOn:iso(report.issued_on)});
     if(!input)return Response.json({error:'Bolsista não encontrado.'},{status:404});

@@ -7,11 +7,15 @@ export const travelQuery = z.object({ projectId: z.string().uuid(), scholarId: z
 export async function loadTravel(projectId: string, scholarId: string) {
   const session = await requireProject(projectId);
   if (session.role === 'scholar' && session.scholarId !== scholarId) throw Object.assign(new Error('Você só pode gerar o próprio termo.'), { status: 403 });
+  return { session, beneficiary: await beneficiaryOf(projectId, scholarId) };
+}
+/** Beneficiary block of Form 26; callers authorize first. */
+export async function beneficiaryOf(projectId: string, scholarId: string) {
   const [row] = await sql`SELECT s.full_name,s.role_area,s.phone,s.email,p.title,p.agreement FROM scholars s JOIN projects p ON p.id=s.project_id
     WHERE s.id=${scholarId}::uuid AND s.project_id=${projectId}::uuid AND s.deleted_at IS NULL AND p.deleted_at IS NULL`;
   if (!row) throw Object.assign(new Error('Beneficiário não encontrado neste projeto.'), { status: 404 });
   const beneficiary: TravelBeneficiary = { name: String(row.full_name), role: String(row.role_area), phone: String(row.phone), email: String(row.email), project: String(row.agreement || "").trim() || String(row.title) };
-  return { session, beneficiary };
+  return beneficiary;
 }
 export const travelEntry = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')), activity: z.string().max(2000) });
 export const travelReportUpdate = z.object({
@@ -26,10 +30,19 @@ const iso = (d: unknown) => d instanceof Date ? `${d.getFullYear()}-${String(d.g
 export const travelReportRow = (r: Record<string, unknown>) => ({
   id: String(r.id), projectId: String(r.project_id), scholarId: String(r.scholar_id), scholarName: r.full_name ? String(r.full_name) : undefined,
   origin: String(r.origin ?? ''), destination: String(r.destination ?? ''), departureDate: iso(r.departure_date), returnDate: iso(r.return_date), paymentDate: iso(r.payment_date),
-  objective: String(r.objective ?? ''), entries: (r.entries ?? []) as Array<{ date: string; activity: string }>, status: String(r.status),
+  objective: String(r.objective ?? ''), entries: (r.entries ?? []) as Array<{ date: string; activity: string }>, photos: (r.photos ?? []) as TravelPhoto[], status: String(r.status),
   createdAt: String(r.created_at), updatedAt: String(r.updated_at)
 });
 
+/** A photo of the "Registro fotográfico" page, stored as JPEG in the private bucket. */
+export type TravelPhoto = { key: string; name: string; caption: string; width: number; height: number; size: number };
+/** The report row without session checks; callers authorize first. */
+export async function travelReportById(projectId: string, reportId: string) {
+  const [row] = await sql`SELECT t.*,s.full_name FROM travel_reports t JOIN scholars s ON s.id=t.scholar_id
+    WHERE t.id=${reportId}::uuid AND t.project_id=${projectId}::uuid AND t.deleted_at IS NULL`;
+  if (!row) throw Object.assign(new Error('Relatório de viagem não encontrado.'), { status: 404 });
+  return travelReportRow(row);
+}
 /** A filled travel report the session may see: scholars only their own. */
 export async function loadTravelReport(projectId: string, reportId: string, write = false) {
   const session = await requireProject(projectId);
@@ -38,8 +51,7 @@ export async function loadTravelReport(projectId: string, reportId: string, writ
   if (!row) throw Object.assign(new Error('Relatório de viagem não encontrado.'), { status: 404 });
   if (session.role === 'scholar' && session.scholarId !== row.scholar_id) throw Object.assign(new Error('Você só pode acessar os próprios relatórios de viagem.'), { status: 403 });
   if (write && session.role === 'scholar' && row.status === 'finalized') throw Object.assign(new Error('Relatório concluído. Peça à coordenação para reabri-lo.'), { status: 409 });
-  const { beneficiary } = await loadTravel(projectId, String(row.scholar_id));
-  return { session, beneficiary, report: travelReportRow(row) };
+  return { session, beneficiary: await beneficiaryOf(projectId, String(row.scholar_id)), report: travelReportRow(row) };
 }
 export const travelFill = (r: ReturnType<typeof travelReportRow>): TravelFill => ({ origin: r.origin, destination: r.destination, departure: r.departureDate, returnDate: r.returnDate, payment: r.paymentDate, objective: r.objective, entries: r.entries });
 

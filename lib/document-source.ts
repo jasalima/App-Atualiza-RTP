@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { requireProject } from './authorize';
 import { sql } from './db';
-import { loadTravel, loadTravelReport, travelFile, travelFill } from './travel';
+import { loadTravel, loadTravelReport, travelFile } from './travel';
+import { fullTravelFill, signatureManifest } from './signatures';
 import { readPrivateObject } from './storage';
 import { toDocx, toPdf } from '../server/services/export';
 import type { ReportContent } from '../server/types';
@@ -54,7 +55,7 @@ export async function loadDocumentSource(input: z.infer<typeof documentRequest>)
     if (filled) {
       const { beneficiary, report } = await loadTravelReport(input.projectId, input.sourceId);
       const label = `Formulário 26 — Relatório de Viagem${report.destination ? ` a ${report.destination}` : ''}`;
-      return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label), makeFile: () => travelFile(beneficiary, format, travelFill(report)) };
+      return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label), makeFile: async () => travelFile(beneficiary, format, await fullTravelFill(report)) };
     }
     const { beneficiary } = await loadTravel(input.projectId, input.sourceId);
     const label = 'Formulário 26 — Relatório de Viagem';
@@ -69,7 +70,7 @@ export async function loadDocumentSource(input: z.infer<typeof documentRequest>)
     if (!report) throw notFound();
     checkScholar(report.scholar_id);
     const format = input.format;
-    return { session, version: Number(report.current_version), label: `RTP ${report.number}${['approved','exported'].includes(String(report.status)) ? '' : ' — prévia'}`, makeFile: async () => ({ buffer: await (format === 'pdf' ? toPdf(report.content as ReportContent) : toDocx(report.content as ReportContent)), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: safeFileName(`RTP-${String(report.number).replace(/\//g, '-')}.${format}`) }) };
+    return { session, version: Number(report.current_version), label: `RTP ${report.number}${['approved','exported'].includes(String(report.status)) ? '' : ' — prévia'}`, makeFile: async () => ({ buffer: await (format === 'pdf' ? toPdf(report.content as ReportContent, await signatureManifest('rtp', input.sourceId)) : toDocx(report.content as ReportContent, await signatureManifest('rtp', input.sourceId))), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: safeFileName(`RTP-${String(report.number).replace(/\//g, '-')}.${format}`) }) };
   }
   if (input.format !== 'original') throw Object.assign(new Error('Arquivos cadastrados são enviados no formato original.'), { status: 400 });
   const [document] = await sql`SELECT d.* FROM documents d JOIN projects p ON p.id=d.project_id AND p.deleted_at IS NULL WHERE d.id=${input.sourceId}::uuid AND d.project_id=${input.projectId}::uuid`;

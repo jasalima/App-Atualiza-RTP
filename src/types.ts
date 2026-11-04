@@ -1,4 +1,4 @@
-export type Role='admin'|'coordinator'|'scholar';
+export type Role='admin'|'coordinator'|'scholar'|'signer';
 export type User={id:string;name:string;email:string;role:Role|null;projectId:string|null;scholarId?:string|null;mustChangePassword?:boolean};
 export type ManagedUser={authUserId:string;name:string;email:string;role:Role|null;projectId:string|null;projectTitle:string|null;scholarId:string|null;scholarName:string|null;mustChangePassword:boolean;revoked:boolean;createdAt:string};
 export type Project={id:string;title:string;executing_institution:string;support_foundation:string;coordinator:string;starts_on:string;ends_on:string;city:string;status:string;description:string;general_objective:string;agreement?:string};
@@ -13,7 +13,17 @@ export type ReportContent={heading:{foundation:string;form:string;title:string;p
 export type Validation={id:string;severity:'critical'|'attention'|'suggestion';code:string;message:string;location:string;resolved_at:string|null;resolution_note?:string};
 export type ImportResult={file:string;status:'extracted'|'unidentified'|'ambiguous'|'rejected';message?:string;scholarId?:string;scholarName?:string;planId?:string;version?:number;itemCount?:number;scheduled?:number};
 export type TravelEntry={date:string;activity:string};
-export type TravelReport={id:string;projectId:string;scholarId:string;scholarName?:string;origin:string;destination:string;departureDate:string|null;returnDate:string|null;paymentDate:string|null;objective:string;entries:TravelEntry[];status:'draft'|'finalized';createdAt:string;updatedAt:string;beneficiary?:{name:string;role:string;phone:string;email:string;project:string}};
+export type TravelPhoto={key:string;name:string;caption:string;width:number;height:number;size:number;url?:string};
+export type TravelReport={id:string;projectId:string;scholarId:string;scholarName?:string;origin:string;destination:string;departureDate:string|null;returnDate:string|null;paymentDate:string|null;objective:string;entries:TravelEntry[];photos?:TravelPhoto[];status:'draft'|'finalized';createdAt:string;updatedAt:string;beneficiary?:{name:string;role:string;phone:string;email:string;project:string}};
 export type ProjectDocument={id:string;projectId:string;scholarId:string|null;scholarName:string|null;title:string;originalName:string;category:string;kind:string;description:string;mimeType:string;size:number;sha256:string;version:number;versions:number;replacesId:string|null;validUntil:string|null;createdBy:string|null;createdAt:string;updatedAt:string};
 export type DeliveryStatus={kind:'rtp'|'travel'|'document';id:string;sentAt:string|null;sentVersion:number|null;sentCount:number;uncertain:boolean;sending:boolean};
 export type DocumentDetail={document:ProjectDocument;versions:ProjectDocument[];deliveries:Array<{status:string;format:string;recipient:string;createdAt:string}>;audit:Array<{action:string;created_at:string;who:string;metadata:Record<string,unknown>}>};
+
+export type SignerStatus='waiting'|'pending'|'signed'|'rejected';
+export type SignatureSigner={id:string;step:number;name:string;roleLabel:string;status:SignerStatus;signedAt:string|null;cpf:string|null;rejectReason:string|null};
+export type SignatureRequest={id:string;projectId:string;kind:'travel'|'rtp';sourceId:string;label:string;status:'pending'|'completed'|'rejected'|'cancelled';createdAt:string;completedAt:string|null;verificationCode:string|null;documentHash:string|null;closedReason:string|null;link:string;signers:SignatureSigner[]};
+export type MySignature=SignatureRequest&{projectTitle:string;myStatus:SignerStatus;myStep:number};
+export type SignerCandidate={authUserId:string;role:Role;email:string;name:string;scholarId:string|null;roleLabel:string;phone:string;pendingFirstAccess:boolean};
+export type SigningDocument={kind:'travel';beneficiary:NonNullable<TravelReport['beneficiary']>;report:TravelReport}|{kind:'rtp';number:string;version:number;content:ReportContent};
+export type SigningView={request:SignatureRequest;projectTitle:string;documentHash:string;document:SigningDocument;me:(SignatureSigner&{cpfOnFile:string|null})|null;manager:boolean;canEdit:boolean;canSign:boolean};
+export type VerifyResult={code:string;label:string;project:string;valid:boolean;status:string;completedAt:string|null;documentHash:string;signers:Array<{step:number;name:string;roleLabel:string;cpf:string;signedAt:string;signatureHash:string}>};

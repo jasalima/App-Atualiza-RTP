@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
+import { assertUnsigned } from '@/lib/signatures';
 
 export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}){
   try{
@@ -8,6 +9,7 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
     const reports=await sql`SELECT project_id,current_version FROM reports WHERE id=${id}::uuid AND deleted_at IS NULL`;
     if(!reports[0])return Response.json({error:'Relatório não encontrado.'},{status:404});
     const session=await requireProject(String(reports[0].project_id),true),next=Number(reports[0].current_version)+1;
+    await assertUnsigned('rtp',id);
     await sql.transaction(tx=>[
       tx`INSERT INTO report_versions(report_id,version,content,change_summary,created_by) VALUES(${id}::uuid,${next},${JSON.stringify(body.content)}::jsonb,${body.changeSummary},${session.user.id})`,
       tx`UPDATE reports SET current_version=${next},status='draft' WHERE id=${id}::uuid`,

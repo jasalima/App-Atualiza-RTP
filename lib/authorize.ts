@@ -26,6 +26,8 @@ export async function requireProject(projectId:string,manage=false){
     ORDER BY (role='admin') DESC
     LIMIT 1`;
   if(!rows.length||manage&&!['admin','coordinator'].includes(String(rows[0].role)))throw Object.assign(new Error('Acesso negado.'),{status:403});
+  // Signature-only accounts reach the signing routes alone (lib/signatures).
+  if(rows[0].role==='signer')throw Object.assign(new Error('Esta conta é exclusiva para assinatura de documentos.'),{status:403});
   return {user,role:String(rows[0].role),scholarId:rows[0].scholar_id as string|null};
 }
 

@@ -22,7 +22,7 @@ export default function SettingsPage() {
   async function create(e:FormEvent){
     e.preventDefault();setBusy(true);setFormError('');
     try{
-      const result=await users.create({...form,scholarId:form.role==='scholar'?form.scholarId:null});
+      const result=await users.create({...form,scholarId:form.role==='scholar'||form.role==='signer'?form.scholarId||null:null});
       setCredential({email:form.email,password:result.temporaryPassword});
       await managed.reload();
       toast(result.whatsappProvisioned ? 'Usuário criado com conexão WhatsApp individual preparada. Entregue a senha temporária por um canal seguro.' : 'Usuário criado. A conexão WhatsApp pode ser preparada em Diárias e passagens. Entregue a senha temporária por um canal seguro.');
@@ -83,9 +83,10 @@ export default function SettingsPage() {
       </div>:<form className="stack" onSubmit={create}>
         <label className="field">Nome completo<input value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})} required minLength={3}/></label>
         <label className="field">E-mail<input type="email" autoComplete="off" value={form.email} onChange={(e)=>setForm({...form,email:e.target.value})} required/></label>
-        <label className="field">Perfil<select value={form.role} onChange={(e)=>setForm({...form,role:e.target.value as Exclude<Role,'admin'>,scholarId:''})}><option value="coordinator">Coordenação</option><option value="scholar">Bolsista</option></select></label>
+        <label className="field">Perfil<select value={form.role} onChange={(e)=>setForm({...form,role:e.target.value as Exclude<Role,'admin'>,scholarId:''})}><option value="coordinator">Coordenação</option><option value="scholar">Bolsista</option><option value="signer">Somente assinatura</option></select>{form.role==='signer'&&<small>Acessa apenas os documentos enviados para assinatura (relatórios de viagem e RTPs).</small>}</label>
         <label className="field">Projeto<select value={form.projectId} onChange={(e)=>setForm({...form,projectId:e.target.value,scholarId:''})} required><option value="">Selecione</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
         {form.role==='scholar'&&<label className="field">Bolsista associado<select value={form.scholarId} onChange={(e)=>setForm({...form,scholarId:e.target.value})} required><option value="">Selecione</option>{projectScholars.map((s)=><option key={s.id} value={s.id}>{s.full_name}</option>)}</select><small>O bolsista precisa estar cadastrado previamente no projeto.</small></label>}
+        {form.role==='signer'&&<label className="field">Membro da equipe<select value={form.scholarId} onChange={(e)=>{const m=projectScholars.find((s)=>s.id===e.target.value);setForm({...form,scholarId:e.target.value,name:form.name||m?.full_name||'',email:form.email||m?.email||''});}}><option value="">Nenhum (signatário externo)</option>{projectScholars.map((s)=><option key={s.id} value={s.id}>{s.full_name}</option>)}</select><small>Ao escolher o membro, nome e e-mail do cadastro são preenchidos.</small></label>}
         {formError&&<Notice tone="crit">{formError}</Notice>}
         <button className="btn btn-primary btn-block" disabled={busy}>{busy?'Criando…':'Criar usuário e gerar senha'}</button>
       </form>}

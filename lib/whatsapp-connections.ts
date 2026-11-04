@@ -39,7 +39,7 @@ export async function provisionProjectWhatsApp(projectId: string) {
   const users = await sql`SELECT DISTINCT a.auth_user_id FROM user_project_access a
     LEFT JOIN managed_users m ON m.auth_user_id=a.auth_user_id
     JOIN projects p ON p.id=${projectId}::uuid AND p.deleted_at IS NULL
-    WHERE (a.project_id=p.id OR a.role='admin') AND m.revoked_at IS NULL`;
+    WHERE (a.project_id=p.id OR a.role='admin') AND a.role<>'signer' AND m.revoked_at IS NULL`;
   const results: Array<{ userId: string; instance?: string; created?: boolean; error?: string }> = [];
   for (const row of users) {
     const userId = String(row.auth_user_id);

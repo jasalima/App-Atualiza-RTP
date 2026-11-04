@@ -2,7 +2,7 @@
 
 import { neon } from './neon';
 import { requestJson } from './request-json';
-import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, ProjectDocument, DocumentDetail, DeliveryStatus, User, Validation, WorkPlan } from './types';
+import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, TravelPhoto, ProjectDocument, DocumentDetail, DeliveryStatus, MySignature, SignatureRequest, SignerCandidate, SigningView, VerifyResult, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
 
@@ -208,4 +208,45 @@ export const users = {
     route<{ success: boolean }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action }) }),
   changePassword: (currentPassword: string, newPassword: string) =>
     route<{ success: boolean }>('/users/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
+};
+
+// Electronic signatures: requests opened by the team, signed in order through a link.
+export type PhotoAction = { action: 'caption'; key: string; caption: string } | { action: 'remove'; key: string } | { action: 'move'; key: string; offset: -1 | 1 };
+export const signatures = {
+  mine: () => route<MySignature[]>('/signatures?mine=1'),
+  forSource: (projectId: string, kind: 'travel' | 'rtp', sourceId: string) => route<SignatureRequest[]>(`/signatures?projectId=${projectId}&kind=${kind}&sourceId=${sourceId}`),
+  candidates: (projectId: string) => route<SignerCandidate[]>(`/signatures/candidates?projectId=${projectId}`),
+  create: (body: { projectId: string; kind: 'travel' | 'rtp'; sourceId: string; signers: string[] }) => route<{ id: string; link: string }>('/signatures', { method: 'POST', body: JSON.stringify(body) }),
+  get: (id: string) => route<SigningView>(`/signatures/${id}`),
+  saveDocument: (id: string, body: unknown) => route<unknown>(`/signatures/${id}/document`, { method: 'PUT', body: JSON.stringify(body) }),
+  sign: (id: string, cpf: string) => route<{ completed: boolean; verificationCode: string | null; signatureHash: string }>(`/signatures/${id}/sign`, { method: 'POST', body: JSON.stringify({ cpf, accept: true }) }),
+  reject: (id: string, reason: string) => route(`/signatures/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  cancel: (id: string, reason: string) => route(`/signatures/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+  notify: (id: string, phone?: string) => route<{ sent: boolean; to: string }>(`/signatures/${id}/notify`, { method: 'POST', body: JSON.stringify(phone ? { phone } : {}) }),
+  fileUrl: (id: string, format: 'pdf' | 'docx') => `/api/signatures/${id}/file?format=${format}`,
+  verify: (code: string) => route<VerifyResult>(`/signatures/verify/${encodeURIComponent(code)}`)
+};
+
+/** Shrinks an image to at most 1600 px and re-encodes it as JPEG (what Word and PDF embed). */
+export async function toJpeg(file: File): Promise<{ blob: Blob; width: number; height: number }> {
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(file); } catch { throw new Error(`Não foi possível ler “${file.name}”. Use fotos JPG, PNG ou WEBP.`); }
+  const k = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height)), width = Math.round(bitmap.width * k), height = Math.round(bitmap.height * k);
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height); ctx.drawImage(bitmap, 0, 0, width, height); bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) throw new Error(`Não foi possível converter “${file.name}”.`);
+  return { blob, width, height };
+}
+/** Photo operations against either endpoint (team editor or signing link). */
+export const photos = {
+  list: (endpoint: string) => route<{ photos: TravelPhoto[] }>(endpoint),
+  change: (endpoint: string, body: PhotoAction) => route<{ photos: TravelPhoto[] }>(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+  add: async (endpoint: string, file: File, caption: string) => {
+    const { blob, width, height } = await toJpeg(file);
+    const ticket = await route<{ key: string; url: string }>(endpoint, { method: 'POST', body: JSON.stringify({ action: 'upload', size: blob.size }) });
+    const put = await fetch(ticket.url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
+    if (!put.ok) throw new Error('A foto não pôde ser enviada ao armazenamento. Tente novamente.');
+    return route<{ photos: TravelPhoto[] }>(endpoint, { method: 'POST', body: JSON.stringify({ action: 'register', key: ticket.key, name: file.name.slice(0, 160), caption, width, height, size: blob.size }) });
+  }
 };

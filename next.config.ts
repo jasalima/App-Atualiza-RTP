@@ -11,7 +11,8 @@ const nextConfig: NextConfig = {
     '/api/travel/export': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/travel/reports/*/export': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/travel/send': ['./node_modules/pdfkit/js/data/**/*'],
-    '/api/documents/send': ['./node_modules/pdfkit/js/data/**/*']
+    '/api/documents/send': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/signatures/*/file': ['./node_modules/pdfkit/js/data/**/*']
   },
   async headers() {
     return [{
