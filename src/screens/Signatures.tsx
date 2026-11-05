@@ -7,6 +7,13 @@ import { PhotoManager, TravelFields } from '../TravelFields';
 import { Drawer, Empty, Notice, PageHead, Pivot, ScopeContext, Skeleton, Tag, errorText, fmt, useScope, useToast } from '../ui';
 import { MinuteEditor, MinutesList } from './Minutes';
 import NotificationBell from '../NotificationBell';
+import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
+
+/** Legal basis shown wherever an electronic signature is given or checked. */
+export function LegalBasis({ compact }: { compact?: boolean }) {
+  return <details className="legal-basis" open={!compact}><summary>{LEGAL_TITLE}</summary><p>{LEGAL_BASIS}</p><p>{LEGAL_EVIDENCE}</p></details>;
+}
+import Connectivity from './Connectivity';
 
 const when = (iso: string | null) => iso ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(iso)) : '';
 const requestTone: Record<SignatureRequest['status'], 'ok' | 'info' | 'warn' | 'crit' | 'mute'> = { pending: 'info', completed: 'ok', rejected: 'crit', cancelled: 'mute' };
@@ -279,6 +286,7 @@ export function SignPage() {
           {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de assinar.</p>}
           <button type="button" className="btn btn-quiet btn-block" onClick={() => void reject()}><X />Não vou assinar</button>
           <p className="muted hash" style={{ fontSize: 11.5, margin: 0, overflowWrap: 'anywhere' }}>Hash SHA-256 do conteúdo: {view.documentHash}</p>
+          <LegalBasis compact />
         </form>}
         {!view.canSign && view.canEdit && !editing && <button className="btn btn-block" onClick={startEdit}><PenLine />Alterar ou inserir informações</button>}
         {waitingTurn && <Notice tone="info" title="Aguardando a sua vez">Você será a próxima pessoa a assinar assim que a anterior concluir.</Notice>}
@@ -317,6 +325,7 @@ export function VerifyPage() {
         <Notice tone={result.valid ? 'ok' : 'warn'} title={result.valid ? 'Documento com assinaturas válidas' : 'Assinaturas sem validade'}>{result.valid ? `Concluído em ${when(result.completedAt)}.` : 'As assinaturas deste documento foram canceladas.'}</Notice>
         <dl className="facts"><div><dt>Documento</dt><dd>{result.label}</dd></div><div><dt>Projeto</dt><dd>{result.project}</dd></div><div><dt>Código</dt><dd>{result.code}</dd></div><div><dt>Hash do documento</dt><dd className="hash" style={{ overflowWrap: 'anywhere' }}>{result.documentHash}</dd></div></dl>
         <ol className="sign-steps">{result.signers.map((s) => <li key={s.step} data-status="signed"><span className="sign-step-n"><Check /></span><div><b>{s.name}</b><small>{s.roleLabel}</small><small>CPF {s.cpf}, em {when(s.signedAt)}</small><small className="hash" style={{ overflowWrap: 'anywhere' }}>{s.signatureHash}</small></div></li>)}</ol>
+        <LegalBasis />
       </div>}
     </div>
   </main>;
@@ -325,15 +334,16 @@ export function VerifyPage() {
 /* Signature-only accounts: nothing but their documents -------------------------------------------- */
 export function SignerShell({ user, logout }: { user: User; logout: () => void }) {
   // Modules enabled by the administration (e.g. Atas de Reunião) open beside the signatures.
-  const grants = (user.modules ?? []).filter((m) => m.module === 'minutes');
-  const projects = grants.map((g) => ({ id: g.projectId, title: g.projectTitle }) as Project);
+  const grants = user.modules ?? [];
+  const projects = [...new Map(grants.map((g) => [g.projectId, { id: g.projectId, title: g.projectTitle } as Project])).values()];
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
   const project = projects.find((p) => p.id === projectId) ?? projects[0] ?? null;
+  const has = (m: string) => !!project && grants.some((g) => g.projectId === project.id && (g.module === m || (g.module === 'minutes_sender' && (m === 'minutes' || m === 'whatsapp'))));
   const scope = { user, logout, projects, project, setProjectId, reloadProjects: async () => undefined, canManage: false };
   return <div className="signer-shell">
     <header className="signer-bar">
-      <NavLink to="/assinaturas" className="signer-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={28} /><span>RTP Inteligente<small>{grants.length ? 'Assinaturas e atas' : 'Assinatura de documentos'}</small></span></NavLink>
-      {grants.length > 0 && <nav className="signer-nav"><NavLink to="/assinaturas">Minhas assinaturas</NavLink><NavLink to="/atas">Atas de Reunião</NavLink></nav>}
+      <NavLink to="/assinaturas" className="signer-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={28} /><span>RTP Inteligente<small>{has('minutes') ? 'Assinaturas e atas' : 'Assinatura de documentos'}</small></span></NavLink>
+      {(has('minutes') || has('whatsapp')) && <nav className="signer-nav"><NavLink to="/assinaturas">Minhas assinaturas</NavLink>{has('minutes') && <NavLink to="/atas">Atas de Reunião</NavLink>}{has('whatsapp') && <NavLink to="/connectivity">Conectividade</NavLink>}</nav>}
       {projects.length > 1 && <select className="signer-project" value={project?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} aria-label="Projeto">{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
       <NotificationBell />
       <span className="signer-user">{user.name}</span>
@@ -344,8 +354,9 @@ export function SignerShell({ user, logout }: { user: User; logout: () => void }
         <Routes>
           <Route path="/assinaturas" element={<MySignatures />} />
           <Route path="/assinar/:id" element={<SignPage />} />
-          {project && <Route path="/atas" element={<MinutesList />} />}
-          {project && <Route path="/atas/:id" element={<MinuteEditor />} />}
+          {has('minutes') && <Route path="/atas" element={<MinutesList />} />}
+          {has('minutes') && <Route path="/atas/:id" element={<MinuteEditor />} />}
+          {has('whatsapp') && <Route path="/connectivity" element={<Connectivity />} />}
           <Route path="*" element={<Navigate to="/assinaturas" replace />} />
         </Routes>
       </ScopeContext.Provider>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { requireProject } from '../../../lib/authorize';
+import { requireModule } from '../../../lib/modules';
 import { sameOrigin, travelError } from '../../../lib/travel';
 import { connectivityConfig, evolutionForProject, saveConnectivity } from '../../../lib/connectivity-config';
 import { ownWhatsApp, provisionProjectWhatsApp, provisionWhatsApp } from '../../../lib/whatsapp-connections';
@@ -9,13 +10,14 @@ const headers = { 'Cache-Control': 'private, no-store' };
 export async function GET(request: Request) {
   try {
     const projectId = projectSchema.parse(new URL(request.url).searchParams.get('projectId'));
-    const session = await requireProject(projectId);
+    // Own connection: by profile or by the enabled module "Conexão WhatsApp" (e.g. a signature-only member).
+    const session = await requireModule(projectId, 'whatsapp');
     const result = { configured: false, instance: '', state: 'not_created', stateError: '', code: '', provisionAvailable: false, serverUrl: '', configurationSource: '' };
     try {
       const config = await connectivityConfig(projectId);
       result.provisionAvailable = Boolean(config.url && config.key);
       result.configurationSource = config.source;
-      if (session.role !== 'scholar') result.serverUrl = config.url;
+      if (session.role === 'admin' || session.role === 'coordinator') result.serverUrl = config.url;
       if (!result.provisionAvailable) { result.code = 'CONFIG_MISSING'; result.stateError = 'O servidor WhatsApp ainda não foi configurado. A coordenação pode configurá-lo nesta página.'; }
       else {
         const connection = await ownWhatsApp(projectId, session.user.id);
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
   try {
     sameOrigin(request);
     const body = z.object({ projectId: projectSchema, action: z.enum(['provision', 'provisionProject', 'connect']) }).parse(await request.json());
-    const { user } = await requireProject(body.projectId, body.action === 'provisionProject');
+    const { user } = body.action === 'provisionProject' ? await requireProject(body.projectId, true) : await requireModule(body.projectId, 'whatsapp');
     if (body.action === 'provisionProject') {
       const results = await provisionProjectWhatsApp(body.projectId);
       return Response.json({ total: results.length, prepared: results.filter(r => !r.error).length, failed: results.filter(r => r.error).length }, { headers });

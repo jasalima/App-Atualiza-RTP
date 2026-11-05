@@ -5,7 +5,7 @@ import { documentSource, loadRequest, signedFile, signerCandidates, signLink, ve
 import { completedMessage, signatureMessage } from './signature-view';
 import { putPrivateObject } from './storage';
 import { minuteVerifyLink } from './minutes-core';
-import { ownWhatsApp } from './whatsapp-connections';
+import { moduleSender, ownWhatsApp } from './whatsapp-connections';
 
 // What happens after each signature, without making the signer wait:
 // - someone still has to sign: that person receives, through the WhatsApp of whoever
@@ -82,23 +82,29 @@ async function dispatchParallel(request: Loaded['request'], signers: Loaded['sig
     await sql`UPDATE signature_requests SET archived_document_id=${doc.id}::uuid WHERE id=${requestId}::uuid`;
     await log(projectId, creator, requestId, 'archive_signed', { documentId: String(doc.id) });
   }
-  const people = await signerCandidates(projectId), owner = people.find((p) => p.authUserId === creator);
-  const targets = completed ? (owner ? [{ person: owner, signer: null }] : [])
-    : signers.filter((s) => s.status === 'pending' && s.auth_user_id !== creator).map((s) => ({ person: people.find((p) => p.authUserId === s.auth_user_id), signer: s }));
+  // The atas go out from the number of the person responsible for them in the project
+  // ("Envio das atas pelo WhatsApp"), or from whoever opened the request.
+  const sender = await moduleSender(projectId, 'minutes_sender', creator);
+  if (!sender.connection || !sender.userId) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: sender.designated ? 'O WhatsApp do responsável pelos envios das atas e o de quem abriu a solicitação estão desconectados.' : 'Quem abriu a solicitação não conectou o WhatsApp.' });
+  const from_ = sender.userId;
+  const people = await signerCandidates(projectId), owner = people.find((p) => p.authUserId === creator), voice = people.find((p) => p.authUserId === from_) ?? owner;
+  // Requests: every pending participant (not the sender, not who opened it, who is already in the app).
+  // Conclusion: the signed ata to every participant and to who opened the request.
+  const ids = completed
+    ? [...new Set([...signers.map((s) => s.auth_user_id), creator])]
+    : signers.filter((s) => s.status === 'pending' && s.auth_user_id !== creator).map((s) => s.auth_user_id);
+  const targets = ids.filter((uid) => uid !== from_).map((uid) => ({ person: people.find((p) => p.authUserId === uid), signer: completed ? null : signers.find((s) => s.auth_user_id === uid) ?? null, uid }));
   if (!targets.length) return;
-  const connection = await ownWhatsApp(projectId, creator);
-  if (!connection) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Quem abriu a solicitação não conectou o WhatsApp.' });
-  const provider = await evolutionForProject(projectId);
-  if (await provider.state(connection.instance, connection.token) !== 'open') return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'WhatsApp de quem abriu a solicitação está desconectado.' });
-  const from = { name: owner?.name ?? 'Coordenação do projeto', role: owner?.roleLabel ?? '' };
-  for (const { person, signer } of targets) {
-    if (!person?.phone) { await log(projectId, creator, requestId, 'dispatch_skipped', { reason: `${signer?.name ?? person?.name ?? 'Destinatário'} sem telefone cadastrado.` }); continue; }
+  const from = { name: voice?.name ?? 'Coordenação do projeto', role: voice?.roleLabel ?? '' };
+  for (const { person, signer, uid } of targets) {
+    const name = signer?.name ?? person?.name ?? signers.find((s) => s.auth_user_id === uid)?.name ?? 'Destinatário';
+    if (!person?.phone) { await log(projectId, from_, requestId, 'dispatch_skipped', { reason: `${name} sem telefone cadastrado.` }); continue; }
     const caption = signer
       ? signatureMessage({ name: signer.name, label: source.label, link: signLink(requestId), firstAccess: person.pendingFirstAccess, from, signers, currentStep: signer.step, parallel: true })
       : completedMessage({ name: person.name, label: source.label, code, verifyUrl: minuteVerifyLink(code), signers, parallel: true });
     try {
-      const result = await provider.sendDocument(connection.instance, connection.token, pdf, digits(person.phone), caption);
-      await log(projectId, creator, requestId, signer ? 'notify_signer' : 'send_signed', { to: `•••• ${person.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });
-    } catch (error) { await log(projectId, creator, requestId, 'dispatch_skipped', { reason: `Falha no envio para ${person.name}: ${(error as Error).message}`.slice(0, 300) }); }
+      const result = await sender.provider.sendDocument(sender.connection.instance, sender.connection.token, pdf, digits(person.phone), caption);
+      await log(projectId, from_, requestId, signer ? 'notify_signer' : 'send_signed', { to: `•••• ${person.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });
+    } catch (error) { await log(projectId, from_, requestId, 'dispatch_skipped', { reason: `Falha no envio para ${name}: ${(error as Error).message}`.slice(0, 300) }); }
   }
 }

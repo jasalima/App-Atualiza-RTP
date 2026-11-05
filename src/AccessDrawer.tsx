@@ -46,8 +46,8 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
         <ul className="module-toggles">{GRANTABLE.map((m) => {
           const byProfile = own.includes(m), on = byProfile || modules.includes(m);
           return <li key={m}><label className="module-toggle">
-            <input type="checkbox" checked={on} disabled={byProfile || busy} onChange={(e) => setModules(e.target.checked ? [...modules, m] : modules.filter((x) => x !== m))} />
-            <span><b>{MODULES[m].label}</b><small>{byProfile ? 'Já incluído pelo perfil.' : m === 'minutes' ? 'Criar, editar e encaminhar atas para assinatura; ver as atas do projeto.' : ''}</small></span>
+            <input type="checkbox" checked={on} disabled={byProfile || busy} onChange={(e) => setModules(e.target.checked ? [...new Set([...modules, m, ...(MODULES[m].requires ?? [])])] : modules.filter((x) => x !== m && !(MODULES[x as ModuleKey]?.requires ?? []).includes(m)))} />
+            <span><b>{MODULES[m].label}</b><small>{byProfile ? 'Já incluído pelo perfil.' : MODULES[m].description}{!byProfile && MODULES[m].requires?.length ? ` Inclui: ${MODULES[m].requires!.map((r) => MODULES[r].label).join(' e ')}.` : ''}</small></span>
           </label></li>;
         })}</ul>
       </section>

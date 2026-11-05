@@ -5,7 +5,7 @@ import { recipientNumber, sender } from '@/lib/document-source';
 import { requestAccess, signLink, signerCandidates } from '@/lib/signatures';
 import { signatureMessage } from '@/lib/signature-view';
 import { sameOrigin, travelError } from '@/lib/travel';
-import { ownWhatsApp } from '@/lib/whatsapp-connections';
+import { moduleSender, ownWhatsApp } from '@/lib/whatsapp-connections';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,10 +22,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const phone = body.phone?.trim() || target?.phone || '';
     if (!phone) throw Object.assign(new Error('O signatário não tem telefone cadastrado. Informe o número para envio.'), { status: 400 });
     const number = recipientNumber(phone);
-    const connection = await ownWhatsApp(projectId, access.user.id);
+    // Atas go out from the number of the person responsible for them (or from the caller).
+    const chosen = parallel ? await moduleSender(projectId, 'minutes_sender', access.user.id) : null;
+    if (parallel && !chosen?.connection) throw Object.assign(new Error(chosen?.designated ? 'O WhatsApp do responsável pelos envios das atas está desconectado, e o seu também.' : 'Conecte seu WhatsApp na seção Conectividade antes de enviar.'), { status: 409 });
+    const connection = parallel ? chosen!.connection! : await ownWhatsApp(projectId, access.user.id);
     if (!connection) throw Object.assign(new Error('Conecte seu WhatsApp na seção Conectividade antes de enviar.'), { status: 409 });
-    const provider = await evolutionForProject(projectId);
-    if (await provider.state(connection.instance, connection.token) !== 'open') throw Object.assign(new Error('Seu WhatsApp está desconectado. Abra Conectividade e escaneie o QR Code.'), { status: 409 });
+    const provider = parallel ? chosen!.provider : await evolutionForProject(projectId);
+    if (!parallel && await provider.state(connection.instance, connection.token) !== 'open') throw Object.assign(new Error('Seu WhatsApp está desconectado. Abra Conectividade e escaneie o QR Code.'), { status: 409 });
     const [role] = await sql`SELECT role FROM user_project_access WHERE auth_user_id=${access.user.id} AND (project_id=${projectId}::uuid OR role='admin') ORDER BY (role='admin') DESC LIMIT 1`;
     const from = await sender({ user: access.user, role: String(role?.role ?? 'coordinator'), scholarId: null }, projectId);
     const text = signatureMessage({ name: current.name, label: String(r.label), link: signLink(id), firstAccess: !!target?.pendingFirstAccess, from, signers: access.signers, currentStep: current.step, parallel });

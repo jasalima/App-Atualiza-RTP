@@ -1,3 +1,4 @@
+import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
 import { AlignmentType, BorderStyle, ImageRun, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import { SEAL_EMBLEM_GOLD, SEAL_EMBLEM_GREEN } from '../assets/seal-emblems';
 
@@ -13,7 +14,7 @@ export const maskCpf = (cpf: string) => { const d = cpf.replace(/\D/g, ''); retu
 export const stampLine = (s: SignedBy) => `Assinado eletronicamente por ${s.name} em ${signedDate(s.signedAt)} às ${signedTime(s.signedAt)}`;
 
 export const MANIFEST_TITLE = 'MANIFESTO DE ASSINATURAS ELETRÔNICAS';
-export const LEGAL_NOTE = 'Documento assinado eletronicamente nos termos da Lei nº 14.063/2020, com identificação do signatário por conta pessoal de acesso, CPF, data, hora e endereço IP. A integridade é garantida pelo resumo criptográfico SHA-256 do conteúdo: qualquer alteração posterior invalida as assinaturas.';
+export const LEGAL_NOTE = `${LEGAL_BASIS} ${LEGAL_EVIDENCE}`;
 const facts = (m: SignatureManifest) => [
   ['Documento', m.label],
   ['Situação', m.status === 'completed' ? 'Assinaturas concluídas' : 'Assinaturas em andamento'],
@@ -47,7 +48,9 @@ export function manifestDocx(m: SignatureManifest, o: { font: string; size: numb
     table(facts(m)),
     p([], { after: 120 }),
     ...m.signers.flatMap((s) => [p([run(`${s.step}. ${stampLine(s)}`, true)], { after: 60 }), table(signerRows(s)), p([], { after: 120 })]),
-    p([run(LEGAL_NOTE)], { after: 0 })
+    p([run(LEGAL_TITLE, true)], { after: 60 }),
+    p([run(LEGAL_BASIS)], { after: 60 }),
+    p([run(LEGAL_EVIDENCE)], { after: 0 })
   ];
 }
 
@@ -73,7 +76,10 @@ export function manifestPdf(doc: PDFKit.PDFDocument, m: SignatureManifest, o: { 
     doc.font(o.bold).fontSize(9.5).text(`${s.step}. ${stampLine(s)}`, o.x, doc.y, { width: o.width }); doc.y += 4;
     table(signerRows(s));
   }
-  doc.font(o.regular).fontSize(8.5).text(LEGAL_NOTE, o.x, doc.y, { width: o.width, align: 'justify' });
+  if (doc.y + 90 > doc.page.height - 50) { doc.addPage(); doc.y = o.top; }
+  doc.font(o.bold).fontSize(9).fillColor('black').text(LEGAL_TITLE, o.x, doc.y + 4, { width: o.width });
+  doc.font(o.regular).fontSize(8.5).text(LEGAL_BASIS, o.x, doc.y + 3, { width: o.width, align: 'justify' });
+  doc.text(LEGAL_EVIDENCE, o.x, doc.y + 3, { width: o.width, align: 'justify' });
 }
 
 /* Banknote-style seal printed on each signature field ------------------------------------------ */

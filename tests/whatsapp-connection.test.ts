@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ access: vi.fn(), own: vi.fn(), provision: vi.fn(), batch: vi.fn(), state: vi.fn(), connect: vi.fn(), config:vi.fn(),save:vi.fn() }));
 vi.mock('../lib/authorize', () => ({ requireProject: mocks.access }));
+vi.mock('../lib/modules', () => ({ requireModule: mocks.access }));
 vi.mock('../lib/travel', () => ({ sameOrigin: () => {}, travelError: (error: { status?: number; message?: string }) => Response.json({ error: error.message }, { status: error.status || 500 }) }));
 vi.mock('../lib/whatsapp-connections', () => ({ ownWhatsApp: mocks.own, provisionWhatsApp: mocks.provision, provisionProjectWhatsApp: mocks.batch }));
 vi.mock('../lib/connectivity-config', () => ({ connectivityConfig:mocks.config, saveConnectivity:mocks.save, evolutionForProject: async () => ({ state: mocks.state, connect: mocks.connect }) }));
@@ -33,7 +34,7 @@ describe('WhatsApp connection authorization', () => {
     mocks.provision.mockResolvedValue({ instance: 'Gesproject-own', created: true });
     expect((await POST(request('provision'))).status).toBe(200);
     expect(mocks.provision).toHaveBeenCalledWith(projectId, 'current-user');
-    expect(mocks.access).toHaveBeenCalledWith(projectId, false);
+    expect(mocks.access).toHaveBeenCalledWith(projectId, 'whatsapp'); // own connection: profile or enabled module
   });
   it('requires management permission for project-wide provisioning', async () => {
     mocks.access.mockRejectedValue({ status: 403, message: 'Acesso negado' });

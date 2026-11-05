@@ -1,13 +1,14 @@
 import PDFDocument from 'pdfkit';
 import qrcode from 'qrcode-generator';
 import { LOGO_PAJE, LOGO_POLO, LOGO_UFT } from '../assets/minutes-logos';
+import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
 import { ATTENDANCE_LABEL, dateLong, dateShort, numberTopics, timeText, type MinuteContent, type RichDoc, type RichNode } from '../../lib/minutes-model';
 
 // Ata de reunião in the institutional model (Ata_Reuniao_Produto_1.3): UFT / Polo / PAJE header,
 // orange title band, justified body, SEI-like signature blocks with the RTP seal, authenticity
 // block with QR Code, annexes after the signatures and "Página N de M" on every page.
 
-export type MinuteSignature = { name: string; roleLabel: string; signedAt: string; signatureHash: string };
+export type MinuteSignature = { name: string; roleLabel: string; signedAt: string; signatureHash: string; ip?: string };
 export type MinutePdfOptions = {
   draft: boolean;                       // preview of an unfinished ata: watermark and no code
   version?: number; code?: string; verifyUrl?: string; contentHash?: string; issuedAt?: string;
@@ -193,7 +194,7 @@ function image(doc: PDFKit.PDFDocument, attrs: Record<string, any>, x: number, w
   const k = Math.min(width / img.width, maxH / img.height, 1.2), w = img.width * k, h = img.height * k;
   const capH = caption ? doc.font('Helvetica-Oblique').fontSize(8.6).heightOfString(pdfSafe(caption), { width }) + 6 : 0;
   need(doc, h + capH + 8);
-  doc.image(bytes as unknown as string, x + (width - w) / 2, doc.y, { width: w, height: h });
+  doc.image(img as unknown as string, x + (width - w) / 2, doc.y, { width: w, height: h });
   doc.y += h + 4;
   if (caption) { doc.font('Helvetica-Oblique').fontSize(8.6).fillColor('#333').text(pdfSafe(caption), x, doc.y, { width, align: 'center', lineGap: 1 }); doc.fillColor('#000'); }
   doc.x = LEFT; doc.y += PARA;
@@ -319,8 +320,10 @@ function signatures(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptio
       { text: pdfSafe(s.name.toLocaleUpperCase('pt-BR')), bold: true, italic: false, underline: false },
       ...(s.roleLabel ? [{ text: ', na qualidade de ', bold: false, italic: false, underline: false }, { text: pdfSafe(s.roleLabel), bold: true, italic: false, underline: false }] : []),
       { text: ', em ', bold: false, italic: false, underline: false }, { text: `${w.date}, às ${w.time}`, bold: true, italic: false, underline: false },
-      { text: ', conforme horário oficial de Brasília e registro eletrônico de assinatura da plataforma RTP Inteligente, com fundamento na Lei nº 14.063/2020. Identificador da assinatura: ', bold: false, italic: false, underline: false },
-      { text: signatureId(s.signatureHash), bold: true, italic: false, underline: false }, { text: '.', bold: false, italic: false, underline: false }
+      { text: ', conforme horário oficial de Brasília e registro eletrônico de assinatura da plataforma RTP Inteligente, com fundamento no art. 10, § 2º, da MP nº 2.200-2/2001 e na Lei nº 14.063/2020. Identificador: ', bold: false, italic: false, underline: false },
+      { text: signatureId(s.signatureHash), bold: true, italic: false, underline: false },
+      { text: '. IP do dispositivo: ', bold: false, italic: false, underline: false }, { text: s.ip || 'não informado', bold: true, italic: false, underline: false },
+      { text: '.\nHash da assinatura (SHA-256): ', bold: false, italic: false, underline: false }, { text: s.signatureHash, bold: false, italic: false, underline: false }
     ];
     doc.font('Helvetica-Bold').fontSize(8.6);
     const th = doc.heightOfString(parts.map((p) => p.text).join(''), { width: tw, lineGap: 1.2 }) + 4, h = Math.max(46, th + 12);
@@ -345,7 +348,16 @@ export function drawQr(doc: PDFKit.PDFDocument, text: string, x: number, y: numb
   doc.fill('#000000').restore();
 }
 
+/** Legal basis of the electronic signatures, always shown on an issued ata. */
+function legal(doc: PDFKit.PDFDocument) {
+  need(doc, 70);
+  doc.y += 2;
+  paragraph(doc, [{ text: LEGAL_TITLE, bold: true, italic: false, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8.8, gap: 2 });
+  paragraph(doc, [{ text: pdfSafe(LEGAL_BASIS), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH, size: 8.4, gap: 2 });
+  paragraph(doc, [{ text: pdfSafe(LEGAL_EVIDENCE), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH, size: 8.4, gap: 6 });
+}
 function authenticity(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
+  if (!o.draft) legal(doc);
   if (!o.code || !o.verifyUrl) {
     need(doc, 40);
     doc.y += 6;
@@ -399,13 +411,16 @@ function annexes(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions)
 /* Header, footer and watermark on every page ------------------------------------------------- */
 function decorate(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
   const range = doc.bufferedPageRange();
+  // Each logo is embedded once and reused on every page.
+  const open = (b: Buffer) => (doc as unknown as { openImage: (b: Buffer) => unknown }).openImage(b) as unknown as string;
+  const uft = open(LOGO_UFT), paje = open(LOGO_PAJE), polo = open(LOGO_POLO);
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
     const keep = doc.page.margins.bottom; doc.page.margins.bottom = 0; // write in the margins without new pages
-    doc.image(LOGO_UFT as unknown as string, LEFT, 26, { fit: [44, 46] });
-    doc.image(LOGO_PAJE as unknown as string, PAGE.w - RIGHT - 88, 30, { fit: [88, 44] });
-    doc.image(LOGO_POLO as unknown as string, PAGE.w - RIGHT - 88 - 66, 22, { fit: [60, 54] });
-    const tx = LEFT + 52, tw = PAGE.w - RIGHT - 88 - 66 - 8 - tx;
+    doc.image(uft, LEFT, 26, { fit: [44, 46] });
+    doc.image(paje, PAGE.w - RIGHT - 88, 30, { fit: [88, 44] });
+    doc.image(polo, PAGE.w - RIGHT - 88 - 76, 22, { fit: [62, 54] });
+    const tx = LEFT + 52, tw = PAGE.w - RIGHT - 88 - 76 - 8 - tx;
     let y = 30;
     for (const line of c.header.lines.filter((l) => l.trim())) { doc.font('Helvetica-Bold').fontSize(8.4).fillColor('#000').text(pdfSafe(line), tx, y, { width: tw, align: 'center', lineGap: 0.2 }); y = doc.y; }
     doc.font('Helvetica').fontSize(7.4).fillColor(GRAY).text(pdfSafe(c.header.address), LEFT - 10, 84, { width: WIDTH + 20, align: 'center', lineBreak: false });

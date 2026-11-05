@@ -5,6 +5,7 @@ import { minutes } from '../api';
 import type { DocumentVerification, FileVerification } from '../types';
 import { dateShort } from '@/lib/minutes-model';
 import { Notice, Pivot, Skeleton, errorText } from '../ui';
+import { LegalBasis } from './Signatures';
 
 // Public page behind the QR Code of the atas: the result comes from the stored records
 // (content hash and every signature recomputed), never from the mere existence of the code.
@@ -68,6 +69,7 @@ export default function VerifyDocumentPage() {
             <li data-ok={result.checks.signatures}>{result.checks.signatures ? <CheckCircle2 /> : <XCircle />}Registros de assinatura conferem (nome, data, hora e evidências eletrônicas)</li>
           </ul>}
           <p className="hash verify-hash">Hash do conteúdo (SHA-256): {result.contentHash}</p>
+          <LegalBasis />
           <p className="muted verify-note">Consulta realizada em {when(result.checkedAt)}. Por proteção de dados pessoais, CPF, endereço IP e e-mails dos signatários não são exibidos.</p>
         </>}
       </div>}

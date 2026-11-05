@@ -48,3 +48,21 @@ export async function provisionProjectWhatsApp(projectId: string) {
   }
   return results;
 }
+
+/**
+ * Number that sends a module's messages in a project: the account enabled as sender (e.g. the
+ * person responsible for the atas) when its WhatsApp is connected, otherwise the fallback
+ * account (who opened the request). Returns which one was used and why.
+ */
+export async function moduleSender(projectId: string, module: 'minutes_sender', fallbackUserId: string) {
+  const [row] = await sql`SELECT auth_user_id FROM user_modules WHERE project_id=${projectId}::uuid AND module=${module} LIMIT 1`;
+  const designated = row ? String(row.auth_user_id) : null;
+  const provider = await evolutionForProject(projectId);
+  for (const userId of [designated, fallbackUserId].filter((v, i, a): v is string => !!v && a.indexOf(v) === i)) {
+    try {
+      const connection = await ownWhatsApp(projectId, userId);
+      if (connection && await provider.state(connection.instance, connection.token) === 'open') return { userId, connection, provider, designated };
+    } catch { /* try the next account */ }
+  }
+  return { userId: null, connection: null, provider, designated };
+}

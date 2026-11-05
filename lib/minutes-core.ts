@@ -48,7 +48,7 @@ export async function versionSignatures(versionId: string) {
   const signers = request ? await sql`SELECT * FROM signature_signers WHERE request_id=${request.id}::uuid ORDER BY step` as unknown as SignerRecord[] : [];
   return { request: request ?? null, signers };
 }
-const printable = (s: SignerRecord): MinuteSignature => ({ name: s.name, roleLabel: s.role_label, signedAt: iso(s.signed_at), signatureHash: String(s.signature_hash) });
+const printable = (s: SignerRecord): MinuteSignature => ({ name: s.name, roleLabel: s.role_label, signedAt: iso(s.signed_at), signatureHash: String(s.signature_hash), ip: s.ip ? String(s.ip) : '' });
 
 /** Storage keys printed by the ata (images in the text and annexes), limited to its own folder. */
 export function contentImageKeys(content: Pick<MinuteContent, 'topics' | 'intro' | 'closing' | 'decisions' | 'attachments'>, prefix: string) {

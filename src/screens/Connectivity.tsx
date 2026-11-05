@@ -6,12 +6,13 @@ import { Empty, Notice, PageHead, Skeleton, Tag, errorText, useAsync, useScope, 
 
 export default function Connectivity() {
   const { project, user, canManage } = useScope();
-  return <ConnectivityProject key={`${user.id}:${project!.id}`} projectId={project!.id} canManage={canManage} />;
+  return <ConnectivityProject key={`${user.id}:${project!.id}`} projectId={project!.id} canManage={canManage} signer={user.role === 'signer'} />;
 }
-function ConnectivityProject({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+function ConnectivityProject({ projectId, canManage, signer = false }: { projectId: string; canManage: boolean; signer?: boolean }) {
   const toast = useToast();
   const status = useAsync(() => route<ConnectivityStatus>(`/connectivity?projectId=${projectId}`), [projectId]);
-  const history = useAsync(() => route<DeliveryHistory[]>(`/documents/history?projectId=${projectId}`), [projectId]);
+  // Signature-only accounts connect their number but have no document history of their own.
+  const history = useAsync(() => (signer ? Promise.resolve([] as DeliveryHistory[]) : route<DeliveryHistory[]>(`/documents/history?projectId=${projectId}`)), [projectId, signer]);
   const [busy, setBusy] = useState(''), [qr, setQr] = useState<string | null>(null), [expired, setExpired] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false), [serverUrl, setServerUrl] = useState(''), [apiKey, setApiKey] = useState('');
   const alive = useRef(true);

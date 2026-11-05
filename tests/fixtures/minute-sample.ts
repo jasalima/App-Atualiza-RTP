@@ -43,4 +43,4 @@ export function sampleDraft(): MinuteDraft {
 }
 export const PROJECT = 'Plano de Desenvolvimento Sustentável do Polo de Agricultura Irrigada do Sudoeste do Tocantins (TED UFT/MIDR)';
 export const sampleContent = () => freezeContent(sampleDraft(), { number: 'ATA Nº 001/2026', projectTitle: PROJECT });
-export const fakeSignature = (name: string, roleLabel: string, signedAt: string) => ({ name, roleLabel, signedAt, signatureHash: createHash('sha256').update(name).digest('hex') });
+export const fakeSignature = (name: string, roleLabel: string, signedAt: string) => ({ name, roleLabel, signedAt, ip: '200.129.163.10', signatureHash: createHash('sha256').update(name).digest('hex') });
