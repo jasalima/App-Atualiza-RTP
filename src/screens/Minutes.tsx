@@ -15,9 +15,23 @@ const when = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const newId = () => (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2));
 
+/** Confirms the deletion; with signatures (administration only) a reason is required. Returns the reason, or null if cancelled. */
+async function confirmDelete(number: string, signed: boolean): Promise<string | null> {
+  if (!signed) return confirm(`Excluir ${number}? Os arquivos da ata serão apagados; fica apenas o registro de auditoria.`) ? '' : null;
+  const reason = prompt(`${number} já tem assinaturas. Ao excluí-la, as assinaturas são canceladas e a verificação pública passa a mostrar “Documento cancelado”. Informe o motivo:`);
+  if (reason === null) return null;
+  if (reason.trim().length < 5) { alert('Informe o motivo (ao menos 5 caracteres).'); return null; }
+  return reason.trim();
+}
+
 /* List ---------------------------------------------------------------------------------------- */
 export function MinutesList() {
-  const { project } = useScope(), toast = useToast(), navigate = useNavigate(), projectId = project!.id;
+  const { project, user } = useScope(), toast = useToast(), navigate = useNavigate(), projectId = project!.id;
+  async function remove(m: MinuteListItem) {
+    const ok = await confirmDelete(m.number, m.signatures.signed > 0);
+    if (ok === null) return;
+    try { await minutesApi.status(m.id, 'delete', ok); toast(`${m.number} excluída.`); await list.reload(); } catch (e) { toast(errorText(e), 'crit'); }
+  }
   const list = useAsync(() => minutesApi.list(projectId), [projectId]);
   const [q, setQ] = useState(''), [status, setStatus] = useState(''), [from, setFrom] = useState(''), [to, setTo] = useState(''), [creating, setCreating] = useState(false);
   const rows = useMemo(() => (list.data ?? []).filter((m) => {
@@ -61,7 +75,7 @@ export function MinutesList() {
               <td>{m.chairedBy || m.draftedBy || '—'}</td>
               <td className="num">{m.signatures.total ? <Progress done={m.signatures.signed} total={m.signatures.total} compact /> : '—'}</td>
               <td><Tag tone={TONE[m.displayStatus]}>{STATUS_LABEL[m.displayStatus]}</Tag></td>
-              <td><NavLink className="btn btn-sm" to={`/atas/${m.id}`}>Abrir</NavLink></td>
+              <td><div className="row-actions"><NavLink className="btn btn-sm" to={`/atas/${m.id}`}>Abrir</NavLink>{(m.signatures.signed === 0 || user.role === 'admin') && <button className="icon-btn icon-danger" title={m.signatures.signed ? 'Excluir (administração)' : 'Excluir'} aria-label={`Excluir ${m.number}`} onClick={() => void remove(m)}><Trash2 /></button>}</div></td>
             </tr>)}</tbody>
           </table></div>}
       </div>
@@ -79,7 +93,7 @@ function Progress({ done, total, compact }: { done: number; total: number; compa
 
 /* Editor ---------------------------------------------------------------------------------------- */
 export function MinuteEditor() {
-  const { id } = useParams(), toast = useToast(), navigate = useNavigate(), { canManage } = useScope();
+  const { id } = useParams(), toast = useToast(), navigate = useNavigate(), { canManage, user } = useScope();
   const [view, setView] = useState<MinuteView | null>(null), [error, setError] = useState('');
   const [draft, setDraft] = useState<MinuteDraft | null>(null), [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [savedAt, setSavedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [sending, setSending] = useState(false);
@@ -236,7 +250,7 @@ export function MinuteEditor() {
           }}><RotateCcw />Reabrir edição</button>}
           {view.status === 'finalized' && <button className="btn btn-block" disabled={busy} onClick={() => void act(() => minutesApi.status(view.id, 'archive'), 'Ata arquivada.')}><Archive />Arquivar</button>}
           {view.status === 'archived' && <button className="btn btn-block" disabled={busy} onClick={() => void act(() => minutesApi.status(view.id, 'unarchive'), 'Ata desarquivada.')}><Archive />Desarquivar</button>}
-          {!version && ['draft', 'editing'].includes(view.status) && <button className="btn btn-quiet btn-block btn-danger" disabled={busy} onClick={() => { if (confirm('Excluir este rascunho? Ele nunca foi emitido.')) minutesApi.status(view.id, 'delete').then(() => { toast('Rascunho excluído.'); navigate('/atas'); }, (e) => toast(errorText(e), 'crit')); }}><Trash2 />Excluir rascunho</button>}
+          {(signedCount === 0 || user.role === 'admin') && <button className="btn btn-quiet btn-block btn-danger" disabled={busy} onClick={() => { void confirmDelete(view.number, signedCount > 0).then((reason) => { if (reason !== null) minutesApi.status(view.id, 'delete', reason).then(() => { toast(`${view.number} excluída.`); navigate('/atas'); }, (e) => toast(errorText(e), 'crit')); }); }}><Trash2 />Excluir ata</button>}
           {view.manager && version && view.status !== 'cancelled' && <button className="btn btn-quiet btn-block btn-danger" disabled={busy} onClick={() => { const reason = prompt('Cancelar a ata? A página de verificação passará a mostrar “Documento cancelado”. Informe o motivo:'); if (reason !== null) void act(() => minutesApi.status(view.id, 'cancel', reason), 'Ata cancelada.'); }}><X />Cancelar ata</button>}
         </div>}
       </aside>

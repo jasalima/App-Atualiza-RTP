@@ -3,7 +3,8 @@ import { requireModule } from './modules';
 import { sql } from './db';
 import { clientIp, signerCandidates } from './signatures';
 import { requestView } from './signature-view';
-import { minuteFolder, minuteVerifyLink, newPublicCode, versionHash, versionSignatures } from './minutes-core';
+import { contentImageKeys, minuteFolder, minuteVerifyLink, newPublicCode, versionHash, versionSignatures } from './minutes-core';
+import { deletePrivateObjects } from './storage';
 import { DEFAULT_HEADER, displayStatus, freezeContent, minuteNumber, type MinuteDraft, type MinuteStatus } from './minutes-model';
 
 // Atas de reunião: who may read and change them, the editable draft and its life cycle.
@@ -200,15 +201,11 @@ export async function sendForSignature(id: string, request: Request) {
 
 /** Archive, unarchive, cancel (with reason) or delete a draft never issued. */
 export async function changeStatus(id: string, action: 'archive' | 'unarchive' | 'cancel' | 'delete', reason: string) {
+  if (action === 'delete') return deleteMinute(id, reason);
   const access = await minuteAccess(id, true), row = access.row, user = access.session.user.id;
   const audit = sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user},${row.project_id}::uuid,${`${action}_minute`},'meeting_minute',${id},jsonb_build_object('reason',${reason}::text))`;
   if (action === 'archive') { if (row.status !== 'finalized') throw fail('Somente atas finalizadas são arquivadas.', 409); await sql.transaction([sql`UPDATE meeting_minutes SET status='archived',updated_at=now() WHERE id=${id}::uuid`, audit]); return; }
   if (action === 'unarchive') { if (row.status !== 'archived') throw fail('A ata não está arquivada.', 409); await sql.transaction([sql`UPDATE meeting_minutes SET status='finalized',updated_at=now() WHERE id=${id}::uuid`, audit]); return; }
-  if (action === 'delete') {
-    const [issued] = await sql`SELECT 1 FROM meeting_minute_versions WHERE minute_id=${id}::uuid LIMIT 1`;
-    if (issued) throw fail('Atas já emitidas não são excluídas: cancele-as para manter o histórico.', 409);
-    await sql.transaction([sql`UPDATE meeting_minutes SET deleted_at=now() WHERE id=${id}::uuid`, audit]); return;
-  }
   if (!access.manager) throw fail('Somente a coordenação cancela atas.', 403);
   if (reason.trim().length < 5) throw fail('Informe o motivo do cancelamento.', 400);
   if (row.status === 'cancelled') throw fail('A ata já está cancelada.', 409);
@@ -240,4 +237,42 @@ export async function listMinutes(projectId: string) {
       publicCode: r.public_code ? String(r.public_code) : null, version: r.version ? Number(r.version) : null, signatures: { signed, total }
     };
   });
+}
+
+/**
+ * Deletes an ata. Without signatures, anyone with the Atas module may do it; with at least one
+ * signature (partial or complete), only the administration, with a reason. Signature requests
+ * are cancelled, issued versions become "cancelada" (the public verification then says so, so an
+ * old PDF cannot pass as valid), and the stored files (official PDFs, annexes, images and the
+ * signed copy in Documents) are removed; the rows stay, deleted, for the audit trail.
+ */
+export async function deleteMinute(id: string, reason: string) {
+  const access = await minuteAccess(id), row = access.row, user = access.session.user.id, why = reason.trim();
+  const [signed] = await sql`SELECT 1 FROM signature_signers s JOIN signature_requests r ON r.id=s.request_id
+    WHERE r.source_kind='minutes' AND r.status IN ('pending','completed') AND s.status='signed'
+      AND r.source_id IN (SELECT id FROM meeting_minute_versions WHERE minute_id=${id}::uuid) LIMIT 1`;
+  if (signed && access.session.role !== 'admin') throw fail('Esta ata já tem assinaturas: somente a administração pode excluí-la.', 403);
+  if (signed && why.length < 5) throw fail('Informe o motivo: as assinaturas registradas serão canceladas.', 400);
+  const folder = minuteFolder(String(row.project_id), id);
+  const versions = await sql`SELECT id,content FROM meeting_minute_versions WHERE minute_id=${id}::uuid`;
+  const renders = await sql`SELECT storage_key FROM meeting_minute_renders WHERE version_id IN (SELECT id FROM meeting_minute_versions WHERE minute_id=${id}::uuid)`;
+  const archived = await sql`SELECT d.id,d.storage_key FROM signature_requests r JOIN documents d ON d.id=r.archived_document_id
+    WHERE r.source_kind='minutes' AND r.source_id IN (SELECT id FROM meeting_minute_versions WHERE minute_id=${id}::uuid)`;
+  const draft = await draftOf(row);
+  const keys = new Set<string>([
+    ...renders.map((r) => String(r.storage_key)), ...archived.map((d) => String(d.storage_key)),
+    ...draft.attachments.map((a) => a.key), ...contentImageKeys({ ...draft, decisions: draft.decisions ?? { type: 'doc', content: [] }, intro: draft.intro ?? { type: 'doc', content: [] }, closing: draft.closing ?? { type: 'doc', content: [] } }, folder),
+    ...versions.flatMap((v) => { const c = v.content as Parameters<typeof contentImageKeys>[0]; return [...c.attachments.map((a) => a.key), ...contentImageKeys(c, folder)]; })
+  ].filter((k) => k.startsWith(folder) || archived.some((d) => d.storage_key === k)));
+  const closed = signed ? `Ata excluída pela administração: ${why}` : 'Ata excluída.';
+  await sql.transaction([
+    sql`UPDATE signature_requests SET status='cancelled',closed_reason=${closed} WHERE source_kind='minutes' AND status IN ('pending','completed')
+      AND source_id IN (SELECT id FROM meeting_minute_versions WHERE minute_id=${id}::uuid)`,
+    sql`UPDATE meeting_minute_versions SET status='cancelled',closed_at=now() WHERE minute_id=${id}::uuid AND status<>'cancelled'`,
+    ...(archived.length ? [sql`UPDATE documents SET deleted_at=now(),deleted_by=${user},delete_reason=${closed} WHERE id=ANY(${archived.map((d) => String(d.id))}::uuid[]) AND deleted_at IS NULL`] : []),
+    sql`UPDATE meeting_minutes SET status='cancelled',status_reason=${closed},deleted_at=now(),updated_by=${user} WHERE id=${id}::uuid`,
+    sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user},${row.project_id}::uuid,'delete_minute','meeting_minute',${id},
+      jsonb_build_object('reason',${why}::text,'hadSignatures',${!!signed}::boolean,'versions',${versions.length}::int,'files',${keys.size}::int))`
+  ]);
+  await deletePrivateObjects([...keys]);
 }
