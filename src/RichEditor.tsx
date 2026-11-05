@@ -7,7 +7,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import Image from '@tiptap/extension-image';
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import {
-  AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Columns3, Combine, Heading2, Heading3, ImagePlus, IndentDecrease, IndentIncrease,
+  AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Columns3, Combine, ImagePlus, IndentDecrease, IndentIncrease,
   Italic, List, ListOrdered, Minus, Quote, Redo2, Rows3, ScissorsLineDashed, Split, Table2, Trash2, Underline, Undo2
 } from 'lucide-react';
 import type { RichDoc, RichNode } from '@/lib/minutes-model';
@@ -75,20 +75,27 @@ export const TABLE_MODELS: Record<string, { label: string; nodes: () => RichNode
 const CELL_COLORS = [['', 'Sem cor'], ['#E9E9E9', 'Cinza'], ['#FFF3D6', 'Laranja claro'], ['#E1EEE5', 'Verde claro'], ['#E2EEF5', 'Azul claro']];
 
 /* Editor ---------------------------------------------------------------------------------------- */
+/** Toolbar button: keeps the text selection (mousedown does not take the focus). */
+function B({ title, active, onClick, children, disabled }: { title: string; active?: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+  return <button type="button" className={active ? 'rich-btn on' : 'rich-btn'} title={title} aria-label={title} aria-pressed={active} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>{children}</button>;
+}
 type Props = { value: RichDoc | null; onChange: (doc: RichDoc) => void; editable?: boolean; placeholder?: string; onUpload?: (file: File) => Promise<string>; minHeight?: number; label: string };
-export default function RichEditor({ value, onChange, editable = true, onUpload, minHeight = 120, label }: Props) {
+export default function RichEditor({ value, onChange, editable = true, onUpload, minHeight = 140, label }: Props) {
   const [uploading, setUploading] = useState(false), [error, setError] = useState('');
   const file = useRef<HTMLInputElement>(null);
+  // The editor is created once: it must always call the latest onChange (the parent's state moves on).
+  const changed = useRef(onChange);
+  changed.current = onChange;
   const editor = useEditor({
     extensions, content: (value ?? { type: 'doc', content: [{ type: 'paragraph' }] }) as never, editable, immediatelyRender: false, shouldRerenderOnTransaction: true,
     editorProps: { attributes: { class: 'rich-body', 'aria-label': label, style: `min-height:${minHeight}px` } },
-    onUpdate: ({ editor: e }) => onChange(e.getJSON() as RichDoc)
+    onUpdate: ({ editor: e }) => changed.current(e.getJSON() as RichDoc)
   }, [editable]);
   if (!editor) return <div className="rich" style={{ minHeight }} />;
-  const run = (fn: (c: ReturnType<Editor['chain']>) => ReturnType<Editor['chain']>) => () => fn(editor.chain().focus()).run();
+  // Commands are built only when a button is clicked: chain().focus() runs the focus right away.
+  type Chain = ReturnType<Editor['chain']> & Record<string, (...a: unknown[]) => ReturnType<Editor['chain']>>;
+  const run = (fn: (c: Chain) => ReturnType<Editor['chain']>) => () => { fn(editor.chain().focus() as Chain).run(); };
   const on = (name: string, attrs?: Record<string, unknown>) => editor.isActive(name, attrs);
-  const B = ({ title, active, onClick, children, disabled }: { title: string; active?: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) =>
-    <button type="button" className={active ? 'rich-btn on' : 'rich-btn'} title={title} aria-label={title} aria-pressed={active} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>{children}</button>;
   async function pick(f: File | undefined) {
     if (!f || !onUpload) return;
     setUploading(true); setError('');
@@ -96,36 +103,45 @@ export default function RichEditor({ value, onChange, editable = true, onUpload,
     catch (x) { setError((x as Error).message); } finally { setUploading(false); if (file.current) file.current.value = ''; }
   }
   const inTable = on('table');
-  const chain = editor.chain().focus() as unknown as Record<string, (...a: unknown[]) => { run: () => boolean }>;
+  const style = on('heading', { level: 2 }) ? 'h2' : on('heading', { level: 3 }) ? 'h3' : 'p';
   return <div className={editable ? 'rich' : 'rich rich-readonly'}>
     {editable && <div className="rich-bar" role="toolbar" aria-label={`Formatação: ${label}`}>
-      <B title="Desfazer" onClick={run((c) => c.undo())} disabled={!editor.can().undo()}><Undo2 /></B>
-      <B title="Refazer" onClick={run((c) => c.redo())} disabled={!editor.can().redo()}><Redo2 /></B>
-      <i />
-      <B title="Título" active={on('heading', { level: 2 })} onClick={run((c) => c.toggleHeading({ level: 2 }))}><Heading2 /></B>
-      <B title="Subtítulo" active={on('heading', { level: 3 })} onClick={run((c) => c.toggleHeading({ level: 3 }))}><Heading3 /></B>
-      <B title="Negrito" active={on('bold')} onClick={run((c) => c.toggleBold())}><Bold /></B>
-      <B title="Itálico" active={on('italic')} onClick={run((c) => c.toggleItalic())}><Italic /></B>
-      <B title="Sublinhado" active={on('underline')} onClick={run((c) => c.toggleUnderline())}><Underline /></B>
-      <i />
-      <B title="Alinhar à esquerda" active={editor.isActive({ textAlign: 'left' })} onClick={run((c) => c.setTextAlign('left'))}><AlignLeft /></B>
-      <B title="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={run((c) => c.setTextAlign('center'))}><AlignCenter /></B>
-      <B title="Alinhar à direita" active={editor.isActive({ textAlign: 'right' })} onClick={run((c) => c.setTextAlign('right'))}><AlignRight /></B>
-      <B title="Justificar" active={editor.isActive({ textAlign: 'justify' })} onClick={run((c) => c.setTextAlign('justify'))}><AlignJustify /></B>
-      <i />
-      <B title="Lista com marcadores" active={on('bulletList')} onClick={run((c) => c.toggleBulletList())}><List /></B>
-      <B title="Lista numerada" active={on('orderedList')} onClick={run((c) => c.toggleOrderedList())}><ListOrdered /></B>
-      <B title="Citação" active={on('blockquote')} onClick={run((c) => c.toggleBlockquote())}><Quote /></B>
-      <B title="Aumentar recuo" onClick={() => (on('listItem') ? editor.chain().focus().sinkListItem('listItem').run() : chain.indent().run())}><IndentIncrease /></B>
-      <B title="Diminuir recuo" onClick={() => (on('listItem') ? editor.chain().focus().liftListItem('listItem').run() : chain.outdent().run())}><IndentDecrease /></B>
-      <i />
-      {onUpload && <B title={uploading ? 'Enviando imagem…' : 'Inserir imagem'} disabled={uploading} onClick={() => file.current?.click()}><ImagePlus /></B>}
-      <B title="Inserir tabela" onClick={run((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }))}><Table2 /></B>
-      <select className="rich-select" aria-label="Inserir quadro modelo" value="" onChange={(e) => { const m = TABLE_MODELS[e.target.value]; if (m) editor.chain().focus().insertContent(m.nodes() as never).run(); }}>
-        <option value="">Quadros…</option>{Object.entries(TABLE_MODELS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-      </select>
-      <B title="Linha horizontal" onClick={run((c) => c.setHorizontalRule())}><Minus /></B>
-      <B title="Quebra de página" onClick={() => chain.setPageBreak().run()}><ScissorsLineDashed /></B>
+      <div className="rich-group">
+        <B title="Desfazer (Ctrl+Z)" onClick={run((c) => c.undo())} disabled={!editor.can().undo()}><Undo2 /></B>
+        <B title="Refazer (Ctrl+Y)" onClick={run((c) => c.redo())} disabled={!editor.can().redo()}><Redo2 /></B>
+      </div>
+      <div className="rich-group">
+        <select className="rich-select rich-style" aria-label="Estilo do parágrafo" value={style} onChange={(e) => { const v = e.target.value; const c = editor.chain().focus(); (v === 'p' ? c.setParagraph() : c.setHeading({ level: v === 'h2' ? 2 : 3 })).run(); }}>
+          <option value="p">Texto normal</option><option value="h2">Título</option><option value="h3">Subtítulo</option>
+        </select>
+      </div>
+      <div className="rich-group">
+        <B title="Negrito (Ctrl+B)" active={on('bold')} onClick={run((c) => c.toggleBold())}><Bold /></B>
+        <B title="Itálico (Ctrl+I)" active={on('italic')} onClick={run((c) => c.toggleItalic())}><Italic /></B>
+        <B title="Sublinhado (Ctrl+U)" active={on('underline')} onClick={run((c) => c.toggleUnderline())}><Underline /></B>
+      </div>
+      <div className="rich-group">
+        <B title="Alinhar à esquerda" active={editor.isActive({ textAlign: 'left' })} onClick={run((c) => c.setTextAlign('left'))}><AlignLeft /></B>
+        <B title="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={run((c) => c.setTextAlign('center'))}><AlignCenter /></B>
+        <B title="Alinhar à direita" active={editor.isActive({ textAlign: 'right' })} onClick={run((c) => c.setTextAlign('right'))}><AlignRight /></B>
+        <B title="Justificar" active={editor.isActive({ textAlign: 'justify' })} onClick={run((c) => c.setTextAlign('justify'))}><AlignJustify /></B>
+      </div>
+      <div className="rich-group">
+        <B title="Lista com marcadores" active={on('bulletList')} onClick={run((c) => c.toggleBulletList())}><List /></B>
+        <B title="Lista numerada" active={on('orderedList')} onClick={run((c) => c.toggleOrderedList())}><ListOrdered /></B>
+        <B title="Citação" active={on('blockquote')} onClick={run((c) => c.toggleBlockquote())}><Quote /></B>
+        <B title="Aumentar recuo" onClick={run((c) => (on('listItem') ? c.sinkListItem('listItem') : c.indent()))}><IndentIncrease /></B>
+        <B title="Diminuir recuo" onClick={run((c) => (on('listItem') ? c.liftListItem('listItem') : c.outdent()))}><IndentDecrease /></B>
+      </div>
+      <div className="rich-group">
+        {onUpload && <B title={uploading ? 'Enviando imagem…' : 'Inserir imagem'} disabled={uploading} onClick={() => file.current?.click()}><ImagePlus /></B>}
+        <B title="Inserir tabela 3 × 3" onClick={run((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }))}><Table2 /></B>
+        <select className="rich-select" aria-label="Inserir quadro modelo" value="" onChange={(e) => { const m = TABLE_MODELS[e.target.value]; if (m) editor.chain().focus().insertContent(m.nodes() as never).run(); }}>
+          <option value="">Inserir quadro…</option>{Object.entries(TABLE_MODELS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+        <B title="Linha horizontal" onClick={run((c) => c.setHorizontalRule())}><Minus /></B>
+        <B title="Quebra de página" onClick={run((c) => c.setPageBreak())}><ScissorsLineDashed /></B>
+      </div>
       <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => void pick(e.target.files?.[0])} />
     </div>}
     {editable && inTable && <div className="rich-bar rich-bar-table" role="toolbar" aria-label="Tabela">

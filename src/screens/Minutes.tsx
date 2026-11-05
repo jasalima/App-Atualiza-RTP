@@ -83,6 +83,7 @@ export function MinuteEditor() {
   const [view, setView] = useState<MinuteView | null>(null), [error, setError] = useState('');
   const [draft, setDraft] = useState<MinuteDraft | null>(null), [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [savedAt, setSavedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [sending, setSending] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
   const candidates = useAsync(() => (view ? minutesApi.participants(view.projectId) : Promise.resolve([] as ParticipantCandidate[])), [view?.projectId]);
   const load = useCallback(async () => {
     try { const v = await minutesApi.get(id!); setView(v); setDraft(v.draft); setDirty(false); setError(''); }
@@ -112,6 +113,9 @@ export function MinuteEditor() {
     catch (e) { toast(errorText(e), 'crit'); } finally { setBusy(false); }
   }
   const upload = (asImage: boolean) => async (file: File) => (await minutesApi.upload(id!, file, asImage)).src;
+  // The preview is shown inside the app (no pop-up to be blocked), always from the saved draft.
+  async function openPreview() { if (dirty && editable && !(await save(true))) return; setPreview(`${minutesApi.pdfUrl(id!)}${minutesApi.pdfUrl(id!).includes('?') ? '&' : '?'}t=${Date.now()}#view=FitH`); }
+  function sendNow() { setSending(true); return act(() => minutesApi.send(id!), 'Solicitação criada: os participantes estão recebendo a ata.').finally(() => setSending(false)); }
 
   if (error) return <div className="stack"><Notice tone="crit" title="Não foi possível abrir a ata">{error}</Notice><div><NavLink className="btn" to="/atas">Voltar às atas</NavLink></div></div>;
   if (!view || !draft) return <Skeleton />;
@@ -121,21 +125,32 @@ export function MinuteEditor() {
   const signers = draft.participants.filter((p) => p.signs);
 
   return <>
-    <NavLink to="/atas" className="back"><ArrowLeft />Atas de Reunião</NavLink>
-    <div className="head">
-      <div><h1>{view.number}</h1><p>{draft.subject || 'Defina o assunto da reunião.'} {view.projectTitle && <span className="muted">· {view.projectTitle}</span>}</p></div>
-      <div className="head-actions">
-        <Tag tone={TONE[view.displayStatus]}>{STATUS_LABEL[view.displayStatus]}</Tag>
-        <a className="btn" href={minutesApi.pdfUrl(view.id)} target="_blank" rel="noreferrer" onClick={(e) => { if (dirty && editable) { e.preventDefault(); void save(true).then((ok) => ok && window.open(minutesApi.pdfUrl(view.id), '_blank', 'noopener')); } }}><FileText />{editable ? 'Pré-visualizar PDF' : 'Ver PDF'}</a>
-        {editable && <button className="btn" disabled={saving || !dirty} onClick={() => void save()}>{saving ? 'Salvando…' : dirty ? 'Salvar' : <><Check />Salvo</>}</button>}
-        {editable && <button className="btn btn-primary" disabled={busy} onClick={() => { if (confirm('Finalizar congela o conteúdo da ata (versão, hash e código de verificação). Alterações depois exigem reabrir a edição. Continuar?')) void act(() => minutesApi.finalize(view.id), 'Ata finalizada. Agora você pode encaminhá-la para assinatura.'); }}><Lock />Finalizar ata</button>}
+    <header className="minute-bar">
+      <NavLink to="/atas" className="minute-bar-back" aria-label="Voltar às Atas de Reunião"><ArrowLeft /></NavLink>
+      <div className="minute-bar-id">
+        <div className="minute-bar-title"><h1>{view.number}</h1><Tag tone={TONE[view.displayStatus]}>{STATUS_LABEL[view.displayStatus]}</Tag>{version && <span className="minute-bar-code" title="Código de verificação">v{version.version} · {version.publicCode}</span>}</div>
+        <p>{draft.subject || <span className="muted">Defina o assunto da reunião</span>}</p>
       </div>
-    </div>
+      <div className="minute-bar-actions">
+        {editable && <span className="minute-bar-save" aria-live="polite">{saving ? 'Salvando…' : dirty ? 'Alterações não salvas' : savedAt ? `Salvo às ${new Date(savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Tudo salvo'}</span>}
+        {editable && <button className="btn" disabled={saving || !dirty} onClick={() => void save()}><Check />Salvar</button>}
+        <button className="btn" onClick={() => void openPreview()}><FileText />{editable ? 'Pré-visualizar' : 'Ver PDF'}</button>
+        <a className="btn" href={minutesApi.pdfUrl(view.id, true)} onClick={(e) => { if (dirty && editable) { e.preventDefault(); void save(true).then((ok) => { if (ok) window.location.href = minutesApi.pdfUrl(view.id, true); }); } }}><Download />Baixar PDF</a>
+        {editable && <button className="btn btn-primary" disabled={busy} onClick={() => { if (confirm('Finalizar congela o conteúdo da ata (versão, hash e código de verificação). Alterações depois exigem reabrir a edição. Continuar?')) void act(() => minutesApi.finalize(view.id), 'Ata finalizada. Agora você pode encaminhá-la para assinatura.'); }}><Lock />Finalizar ata</button>}
+        {view.status === 'finalized' && !openRequest && view.canEdit && <button className="btn btn-primary" disabled={busy || sending || !signers.length} onClick={() => void sendNow()}><Send />{sending ? 'Encaminhando…' : 'Encaminhar para assinatura'}</button>}
+      </div>
+    </header>
+    {preview && <div className="pdf-modal" role="dialog" aria-modal="true" aria-label={`Pré-visualização de ${view.number}`} onKeyDown={(e) => e.key === 'Escape' && setPreview(null)}>
+      <div className="pdf-modal-box">
+        <div className="pdf-modal-head"><b>{view.number}{editable ? ' — minuta' : ''}</b><div className="head-actions"><a className="btn btn-sm" href={preview} target="_blank" rel="noreferrer"><ExternalLink />Nova aba</a><a className="btn btn-sm" href={minutesApi.pdfUrl(view.id, true)}><Download />Baixar</a><button className="btn btn-sm" autoFocus onClick={() => setPreview(null)}><X />Fechar</button></div></div>
+        <iframe title={`PDF de ${view.number}`} src={preview} />
+      </div>
+    </div>}
     {view.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Ata cancelada">{view.statusReason}</Notice></div>}
     {!view.canEdit && ['draft', 'editing'].includes(view.status) && <div style={{ marginBottom: 16 }}><Notice tone="info">Somente quem criou a ata ou a coordenação do projeto pode alterá-la.</Notice></div>}
     {!editable && ['finalized', 'archived'].includes(view.status) && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Conteúdo congelado">A versão {version?.version} foi emitida com o hash SHA-256 e o código {version?.publicCode}. Para corrigir o texto, reabra a edição: a versão atual passa a constar como substituída.</Notice></div>}
 
-    <div className="split">
+    <div className="split minute-split">
       <div className="stack">
         <Section title="Identificação da reunião">
           <div className="grid-form">
@@ -209,7 +224,7 @@ export function MinuteEditor() {
             {signers.length ? <ul className="signer-list">{signers.map((p) => { const c = candidates.data?.find((x) => x.authUserId === p.authUserId); return <li key={p.authUserId}><b>{p.name}</b><small>{[p.role, p.institution].filter(Boolean).join(' · ') || '—'}</small><small>{c?.email || p.email || 'sem e-mail'}{c?.pendingFirstAccess ? ' · primeiro acesso pendente' : ''}</small></li>; })}</ul>
               : <Notice tone="warn">Nenhum signatário marcado. Reabra a edição e marque “Assina” nos participantes presentes.</Notice>}
             <p className="muted" style={{ fontSize: 13, margin: 0 }}>Todos recebem a ata ao mesmo tempo, pelo seu WhatsApp, e assinam em qualquer ordem pelo link. Cada assinatura registra nome, CPF, data, hora, IP e o hash SHA-256 da versão {version?.version}.</p>
-            <button className="btn btn-primary btn-block" disabled={busy || sending || !signers.length} onClick={() => { setSending(true); void act(() => minutesApi.send(view.id), 'Solicitação criada: os participantes estão recebendo a ata.').finally(() => setSending(false)); }}><Send />{sending ? 'Encaminhando…' : `Encaminhar para ${signers.length} signatário(s)`}</button>
+            <button className="btn btn-primary btn-block" disabled={busy || sending || !signers.length} onClick={() => void sendNow()}><Send />{sending ? 'Encaminhando…' : `Encaminhar para ${signers.length} signatário(s)`}</button>
           </div>}
 
         {view.canEdit && <div className="panel panel-pad stack" style={{ gap: 8 }}>
@@ -266,13 +281,14 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
   const row = (key: string, p: MinuteParticipant | null, c: ParticipantCandidate | null) => {
     const on = !!p, name = p?.name ?? c!.name;
     return <tr key={key} className={on ? undefined : 'row-off'}>
-      <td><label className="check"><input type="checkbox" checked={on} disabled={!editable || !c} onChange={() => c && toggle(c)} aria-label={`Incluir ${name}`} /><span><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}` : 'Convidado externo'}</small></span></label></td>
+      <td className="col-pick"><input type="checkbox" className="pick" checked={on} disabled={!editable || !c} onChange={() => c && toggle(c)} aria-label={`Incluir ${name} na ata`} /></td>
+      <td className="col-person"><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}` : 'Convidado externo'}</small></td>
       <td>{on ? <input value={p!.institution} disabled={!editable} onChange={(e) => update(key, { institution: e.target.value })} placeholder="Ex.: UFT" aria-label={`Instituição de ${name}`} /> : <span className="muted">{c?.institution || '—'}</span>}</td>
       <td>{on ? <input value={p!.role} disabled={!editable} onChange={(e) => update(key, { role: e.target.value })} aria-label={`Função de ${name}`} /> : <span className="muted">{c?.role || '—'}</span>}</td>
       <td>{on && <select value={p!.attendance} disabled={!editable} onChange={(e) => update(key, { attendance: e.target.value as MinuteParticipant['attendance'] })} aria-label={`Situação de ${name}`}>
         {(c ? ['present', 'absent', 'justified'] : ['guest', 'absent', 'justified']).map((a) => <option key={a} value={a}>{ATTENDANCE_LABEL[a as MinuteParticipant['attendance']]}</option>)}
       </select>}</td>
-      <td>{on && <label className="check" title={!p!.authUserId ? 'Sem acesso ao sistema: crie um acesso de assinatura em Configurações.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !p!.authUserId || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{p!.authUserId ? 'Assina' : 'Sem acesso'}</span></label>}</td>
+      <td>{on && <label className="sign-toggle" title={!p!.authUserId ? 'Sem acesso ao sistema: crie um acesso de assinatura em Configurações.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !p!.authUserId || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{p!.authUserId ? 'Assina' : 'Sem acesso'}</span></label>}</td>
       <td>{on && editable && !c && <button className="icon-btn" aria-label={`Remover ${name}`} onClick={() => onChange(draft.participants.filter((x) => keyOf(x) !== key))}><X /></button>}</td>
     </tr>;
   };
@@ -285,7 +301,7 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
       </div>}
     </div>
     {!candidates ? <div className="panel-pad"><Skeleton /></div> : <div className="table-wrap"><table className="ledger participants">
-      <thead><tr><th>Pessoa</th><th>Instituição</th><th>Cargo ou função</th><th>Situação</th><th>Assinatura</th><th aria-label="Remover" /></tr></thead>
+      <thead><tr><th className="col-pick"><span className="sr-only">Incluir</span></th><th>Pessoa</th><th>Instituição</th><th>Cargo ou função</th><th>Situação</th><th>Assinatura</th><th aria-label="Remover" /></tr></thead>
       <tbody>
         {candidates.map((c) => row(keyOf(c), selected.get(keyOf(c)) ?? null, c))}
         {guests.map((p) => row(keyOf(p), p, null))}

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { requireProject } from '@/lib/authorize';
-import { sql } from '@/lib/db';
+import { sender } from '@/lib/document-source';
 import { createMinute, listMinutes } from '@/lib/minutes';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
@@ -19,8 +19,8 @@ export async function POST(request: Request) {
     sameOrigin(request);
     const { projectId } = z.object({ projectId: z.string().uuid() }).parse(await request.json());
     const session = await requireProject(projectId);
-    const [member] = session.scholarId ? await sql`SELECT full_name FROM scholars WHERE id=${session.scholarId}::uuid` : [];
-    const drafter = String(member?.full_name ?? (session.user as { name?: string }).name ?? '').trim();
+    // Full name from the member record (by link or e-mail), as printed in the closing paragraph.
+    const drafter = (await sender(session, projectId)).name;
     return Response.json(await createMinute(projectId, session.user.id, drafter), { status: 201 });
   } catch (error) { return travelError(error); }
 }
