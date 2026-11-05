@@ -71,7 +71,7 @@ export function MinutesList() {
 
 function Progress({ done, total, compact }: { done: number; total: number; compact?: boolean }) {
   const pct = total ? Math.round((done / total) * 100) : 0;
-  return <div className={compact ? 'progress progress-compact' : 'progress'}>
+  return <div className={compact ? 'sig-progress sig-progress-compact' : 'sig-progress'}>
     <span>{compact ? `${done}/${total}` : <><b>{done} de {total}</b> assinaturas concluídas — {pct}%</>}</span>
     <i role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Assinaturas concluídas"><em style={{ width: `${pct}%` }} /></i>
   </div>;

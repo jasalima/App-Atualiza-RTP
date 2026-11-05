@@ -55,6 +55,19 @@ export default function Documents() {
   const sentMap = useMemo(() => new Map((deliveries.data ?? []).map((d) => [`${d.kind}:${d.id}`, d])), [deliveries.data]);
   const stateOf = (r: Row) => r.type === 'file' ? sendState(sentMap.get(`document:${r.doc.id}`)) : r.type === 'rtp' ? sendState(sentMap.get(`rtp:${r.report.id}`), r.report.current_version) : sendState(sentMap.get(`travel:${r.travel.id}`));
   const refreshSent = () => void deliveries.reload();
+  // Deletion frees the stored files; signed documents must have their signatures cancelled first.
+  async function remove(r: Row) {
+    const label = r.type === 'file' ? r.doc.title : r.type === 'rtp' ? `RTP ${r.report.number}` : `Formulário 26 — ${r.travel.scholarName}`;
+    const reason = prompt(`Excluir “${label}”? Os arquivos guardados serão apagados para liberar espaço; fica apenas o registro de auditoria. Informe o motivo:`);
+    if (reason === null) return;
+    if (reason.trim().length < 5) { toast('Informe o motivo da exclusão (ao menos 5 caracteres).', 'crit'); return; }
+    try {
+      if (r.type === 'file') await documentsApi.remove(projectId, r.doc.id, reason.trim());
+      else if (r.type === 'rtp') await reportsApi.remove(r.report.id, reason.trim());
+      else await travelReports.remove(projectId, r.travel.id);
+      toast(`“${label}” excluído.`); await data.reload(); refreshSent();
+    } catch (e) { toast(errorText(e), 'crit'); }
+  }
   const [files, reports, travel, members] = data.data ?? [[], [], [], []] as [ProjectDocument[], Report[], TravelReport[], ScholarOverview[]];
 
   const rows = useMemo<Row[]>(() => [
@@ -107,15 +120,15 @@ export default function Documents() {
         </div>
         <div className="table-wrap"><table className="ledger doc-table">
           <thead><tr><th>Documento</th><th>Categoria</th><th>Membro</th><th>Situação</th><th>Envio</th><th>Atualizado</th><th aria-label="Ações" /></tr></thead>
-          <tbody>{filtered.map((r) => r.type === 'file' ? <FileRow key={r.key} doc={r.doc} projectId={projectId} onOpen={() => setDetail(r.doc.id)} send={stateOf(r)} onSent={refreshSent} />
+          <tbody>{filtered.map((r) => r.type === 'file' ? <FileRow key={r.key} doc={r.doc} projectId={projectId} onOpen={() => setDetail(r.doc.id)} send={stateOf(r)} onSent={refreshSent} onDelete={canManage ? () => remove(r) : undefined} />
             : r.type === 'rtp' ? <tr key={r.key}>
               <td><NavLink className="doc-name" to={`/reports/${r.report.id}`}><FileText /><span><b>RTP {r.report.number}</b><small>{fmtPeriod(r.report.period_start, r.report.period_end)}</small></span></NavLink></td>
               <td><Tag tone="info">Relatório Técnico Parcial</Tag></td><td>{r.report.scholar_name}</td><td><Tag status={r.report.status} /></td><td><SendTag state={stateOf(r)} /></td><td className="num">{fmt(r.date)}</td>
-              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'rtp', id: r.report.id, label: `RTP ${r.report.number}`, scholarId: r.report.scholar_id }} onSent={refreshSent} /></div></td></tr>
+              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'rtp', id: r.report.id, label: `RTP ${r.report.number}`, scholarId: r.report.scholar_id }} onSent={refreshSent} />{canManage && <DeleteIcon label={`RTP ${r.report.number}`} onClick={() => remove(r)} />}</div></td></tr>
             : <tr key={r.key}>
               <td><NavLink className="doc-name" to={`/travel/${r.travel.id}`}><Plane /><span><b>Relatório de viagem{r.travel.destination ? ` a ${r.travel.destination}` : ''}</b><small>{r.travel.departureDate ? fmtPeriod(r.travel.departureDate, r.travel.returnDate) : 'Datas a preencher'}</small></span></NavLink></td>
               <td><Tag tone="info">Formulário 26</Tag></td><td>{r.travel.scholarName}</td><td><Tag tone={r.travel.status === 'finalized' ? 'ok' : 'info'}>{r.travel.status === 'finalized' ? 'Concluído' : 'Em preenchimento'}</Tag></td><td><SendTag state={stateOf(r)} /></td><td className="num">{fmt(r.date)}</td>
-              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'travel', id: r.travel.id, label: `Formulário 26 — ${r.travel.scholarName}`, scholarId: r.travel.scholarId }} onSent={refreshSent} /></div></td></tr>)}</tbody>
+              <td><div className="row-actions"><SendDocumentButton iconOnly source={{ kind: 'travel', id: r.travel.id, label: `Formulário 26 — ${r.travel.scholarName}`, scholarId: r.travel.scholarId }} onSent={refreshSent} />{canManage && <DeleteIcon label={`Formulário 26 — ${r.travel.scholarName}`} onClick={() => remove(r)} />}</div></td></tr>)}</tbody>
         </table></div>
         {!filtered.length && <Empty title={rows.length ? 'Nenhum documento encontrado' : 'Acervo vazio'} action={!rows.length && <button className="btn btn-primary" onClick={() => setUploading({})}><Upload />Enviar documentos</button>}>{rows.length ? 'Ajuste a busca ou os filtros.' : 'Envie contratos, atas, ofícios, notas e demais arquivos do projeto. Planos importados, evidências, RTPs e relatórios de viagem aparecem aqui automaticamente.'}</Empty>}
       </section>
@@ -128,7 +141,10 @@ export default function Documents() {
   </>;
 }
 
-function FileRow({ doc, projectId, onOpen, send, onSent }: { doc: ProjectDocument; projectId: string; onOpen: () => void; send: SendState; onSent: () => void }) {
+function DeleteIcon({ label, onClick }: { label: string; onClick: () => void }) {
+  return <button className="icon-btn icon-danger" onClick={onClick} aria-label={`Excluir ${label}`} title="Excluir"><Trash2 /></button>;
+}
+function FileRow({ doc, projectId, onOpen, send, onSent, onDelete }: { doc: ProjectDocument; projectId: string; onOpen: () => void; send: SendState; onSent: () => void; onDelete?: () => void }) {
   const toast = useToast(), Icon = iconFor(doc.mimeType, doc.originalName), v = validity(doc.validUntil);
   const open = (mode: 'view' | 'download') => documentsApi.open(projectId, doc.id, mode).catch((e) => toast(errorText(e), 'crit'));
   return <tr>
@@ -143,6 +159,7 @@ function FileRow({ doc, projectId, onOpen, send, onSent }: { doc: ProjectDocumen
       <button className="icon-btn" onClick={() => void open('download')} aria-label={`Baixar ${doc.title}`} title="Baixar"><Download /></button>
       <SendDocumentButton iconOnly source={{ kind: 'document', id: doc.id, label: doc.title, scholarId: doc.scholarId }} onSent={onSent} />
       <button className="icon-btn" onClick={onOpen} aria-label={`Detalhes de ${doc.title}`} title="Detalhes, versões e histórico"><History /></button>
+      {onDelete && doc.category !== 'work_plan' && <DeleteIcon label={doc.title} onClick={onDelete} />}
     </div></td>
   </tr>;
 }

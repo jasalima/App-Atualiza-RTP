@@ -79,17 +79,19 @@ describe('PDF da ata', () => {
 
   it('D — com 3 de 5 assinaturas mostra apenas as concluídas', async () => {
     const t = await text(await minutesPdf(sampleContent(), { ...base, signatures: [sigs[3], sigs[1], sigs[4]] }));
-    expect(t.match(/Documento assinado eletronicamente por/g)).toHaveLength(3);
+    expect(t.match(/Assinado eletronicamente por/g)).toHaveLength(3);
     expect(t).toContain('ANDERSON SACRAMENTO');
     expect(t).not.toContain('por NILSON DENUNCIO');
     expect(t).toContain('3 de 5 assinaturas concluídas');
+    expect(t).toContain('IP 200.129.163.10');
+    expect(t).toContain('Fundamentação legal');
     expect(t).toContain('K7QM-2XRP-9TFA-H3WD');
   });
   it('E — com todas as assinaturas traz os cinco blocos, o QR e o código; o mesmo estado gera o mesmo arquivo', async () => {
     const a = await minutesPdf(sampleContent(), { ...base, signatures: sigs }), b = await minutesPdf(sampleContent(), { ...base, signatures: sigs });
     expect(a.equals(b)).toBe(true);
     const t = await text(a);
-    expect(t.match(/Documento assinado eletronicamente por/g)).toHaveLength(5);
+    expect(t.match(/Assinado eletronicamente por/g)).toHaveLength(5);
     expect(t).not.toContain('assinaturas concluídas');
     expect(t).toContain('AUTENTICIDADE DO DOCUMENTO');
     expect(t).toContain(signatureId(sigs[0].signatureHash));
@@ -99,7 +101,7 @@ describe('PDF da ata', () => {
   it('minuta: marca d’água e nenhuma declaração de assinatura', async () => {
     const t = await text(await minutesPdf(sampleContent(), { draft: true, signatures: [], totalSigners: 0, images: new Map() }));
     expect(t).toContain('MINUTA');
-    expect(t).not.toContain('Documento assinado eletronicamente por');
+    expect(t).not.toContain('Assinado eletronicamente por');
     expect(t).toContain('gerados quando a ata é finalizada');
   });
   it('anexos vêm depois das assinaturas', async () => {

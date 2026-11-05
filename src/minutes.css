@@ -3,11 +3,11 @@
 .toolbar-date input{min-width:0;width:150px}
 .span-2{grid-column:1/-1}
 .grid-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.progress{display:grid;gap:6px;font-size:13.5px;color:var(--ink-2)}
-.progress i{display:block;height:8px;border-radius:999px;background:var(--line-soft);overflow:hidden}
-.progress em{display:block;height:100%;background:var(--pivot);border-radius:inherit;transition:width .3s}
-.progress-compact{min-width:70px;font-size:12.5px;gap:3px}
-.progress-compact i{height:5px}
+.sig-progress{display:grid;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.sig-progress i{display:block;height:8px;border-radius:999px;background:var(--line-soft);overflow:hidden}
+.sig-progress em{display:block;height:100%;background:var(--pivot);border-radius:inherit;transition:width .3s}
+.sig-progress-compact{min-width:70px;font-size:12.5px;gap:3px}
+.sig-progress-compact i{height:5px}
 .minute-section>.panel-head{align-items:center;flex-wrap:wrap}
 details.minute-section>summary{cursor:pointer;list-style:none;border-bottom:0}
 details.minute-section>summary::-webkit-details-marker{display:none}

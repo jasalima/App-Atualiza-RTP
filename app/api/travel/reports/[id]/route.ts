@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { assertUnsigned } from '@/lib/signatures';
+import { deletePrivateObjects } from '@/lib/storage';
 import { loadTravelReport, sameOrigin, travelError, travelReportRow, travelReportUpdate } from '@/lib/travel';
 export const runtime = 'nodejs';
 type Params = { params: Promise<{ id: string }> };
@@ -35,11 +36,15 @@ export async function DELETE(request: Request, { params }: Params) {
   try {
     sameOrigin(request);
     const { id } = await params, projectId = projectOf(request);
-    const { session } = await loadTravelReport(projectId, id, true);
+    const { session, report } = await loadTravelReport(projectId, id, true);
+    // A signed report is kept until its signatures are cancelled; open requests without signatures go with it.
+    await assertUnsigned('travel', id);
     await sql.transaction([
+      sql`UPDATE signature_requests SET status='cancelled',closed_reason='Documento excluído.' WHERE source_kind='travel' AND source_id=${id}::uuid AND status='pending'`,
       sql`UPDATE travel_reports SET deleted_at=now() WHERE id=${id}::uuid AND project_id=${projectId}::uuid`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${session.user.id},${projectId}::uuid,'delete','travel_report',${id})`
     ]);
+    await deletePrivateObjects(report.photos.map((p) => p.key)); // free the photos' space
     return Response.json({ deleted: true });
   } catch (error) { return travelError(error); }
 }

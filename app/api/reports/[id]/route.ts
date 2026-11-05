@@ -27,7 +27,9 @@ export async function DELETE(request:Request,{params}:{params:Promise<{id:string
     const reports=await sql`SELECT project_id,number FROM reports WHERE id=${id}::uuid AND deleted_at IS NULL`;
     if(!reports[0])return Response.json({error:'Relatório não encontrado.'},{status:404});
     const session=await requireProject(String(reports[0].project_id),true);
+    await assertUnsigned('rtp',id);
     await sql.transaction(tx=>[
+      tx`UPDATE signature_requests SET status='cancelled',closed_reason='Documento excluído.' WHERE source_kind='rtp' AND source_id=${id}::uuid AND status='pending'`,
       tx`UPDATE reports SET deleted_at=now() WHERE id=${id}::uuid`,
       tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'delete','report',${id},jsonb_build_object('number',${String(reports[0].number)}::text,'reason',${body.reason}::text))`
     ]);

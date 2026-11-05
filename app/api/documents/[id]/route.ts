@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { sql } from '../../../../lib/db';
 import { documentMetadata, documentRow, documentVersions, loadDocument } from '../../../../lib/documents';
 import { sameOrigin, travelError } from '../../../../lib/travel';
+import { deletePrivateObjects } from '../../../../lib/storage';
 type Params = { params: Promise<{ id: string }> };
 const projectOf = (request: Request) => z.string().uuid().parse(new URL(request.url).searchParams.get('projectId'));
 const mask = (phone: string) => phone.length > 4 ? `${'•'.repeat(Math.max(0, phone.length - 4))}${phone.slice(-4)}` : phone;
@@ -51,7 +52,10 @@ export async function DELETE(request: Request, { params }: Params) {
       sql`UPDATE documents SET deleted_at=now(),deleted_by=${session.user.id},delete_reason=${reason} WHERE id=ANY(${ids}::uuid[]) AND project_id=${projectId}::uuid AND deleted_at IS NULL`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${projectId}::uuid,'delete','document',${id},jsonb_build_object('reason',${reason}::text,'versions',${ids.length}::int))`
     ]);
-    return Response.json({ deleted: true, versions: ids.length });
+    // Free the space of every version in the bucket; the row stays (deleted) for the audit trail.
+    const keys = (await sql`SELECT storage_key FROM documents WHERE id=ANY(${ids}::uuid[])`).map((r) => String(r.storage_key));
+    const freed = await deletePrivateObjects(keys);
+    return Response.json({ deleted: true, versions: ids.length, filesRemoved: freed });
   } catch (error) { return travelError(error); }
 }
 

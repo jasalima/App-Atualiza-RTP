@@ -280,22 +280,21 @@ function attendance(doc: PDFKit.PDFDocument, c: MinuteContent) {
 }
 
 /** System seal in place of the SEI mark: pivot emblem, "RTP", padlock and "assinatura eletrônica". */
-export function drawSeal(doc: PDFKit.PDFDocument, x: number, y: number) {
-  const w = 70, h = 38;
-  doc.save().roundedRect(x, y, w, h, 3).lineWidth(0.9).fillAndStroke('#F3F4F3', '#8F9893').restore();
-  const cx = x + 13, cy = y + 14, r = 8.5, colors = ['#2E7A4E', '#2E7A4E', '#2E7A4E', '#D9B14F', '#DCE3DF'];
+export function drawSeal(doc: PDFKit.PDFDocument, x: number, y: number, k = 1) {
+  const w = 70 * k, h = 38 * k;
+  doc.save().roundedRect(x, y, w, h, 3 * k).lineWidth(0.8).fillAndStroke('#F3F4F3', '#8F9893').restore();
+  const cx = x + 13 * k, cy = y + 14 * k, r = 8.5 * k, colors = ['#2E7A4E', '#2E7A4E', '#2E7A4E', '#D9B14F', '#DCE3DF'];
   colors.forEach((color, i) => {
     const a0 = ((i * 72) - 90) * Math.PI / 180, a1 = (((i + 1) * 72) - 90) * Math.PI / 180;
     doc.save().path(`M ${cx} ${cy} L ${cx + r * Math.cos(a0)} ${cy + r * Math.sin(a0)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(a1)} ${cy + r * Math.sin(a1)} Z`).fill(color).restore();
   });
   doc.save().circle(cx, cy, r).lineWidth(0.5).stroke('#12303A').restore();
-  doc.save().moveTo(cx, cy).lineTo(cx + r * Math.cos(-0.35), cy + r * Math.sin(-0.35)).lineWidth(0.9).stroke('#12303A').circle(cx, cy, 1.4).fill('#12303A').restore();
-  doc.font('Helvetica-Bold').fontSize(13).fillColor('#12303A').text('RTP', x + 25, y + 7.2, { lineBreak: false });
-  // padlock
-  const lx = x + w - 8, ly = y + 7;
-  doc.save().roundedRect(lx - 3.6, ly + 1.4, 7.2, 5.6, 0.8).fill('#12303A').restore();
-  doc.save().path(`M ${lx - 2.3} ${ly + 1.6} L ${lx - 2.3} ${ly - 0.4} A 2.3 2.3 0 0 1 ${lx + 2.3} ${ly - 0.4} L ${lx + 2.3} ${ly + 1.6}`).lineWidth(1.1).stroke('#12303A').restore();
-  doc.font('Helvetica').fontSize(5.7).fillColor('#333').text('assinatura eletrônica', x, y + h - 10, { width: w, align: 'center', lineBreak: false });
+  doc.save().moveTo(cx, cy).lineTo(cx + r * Math.cos(-0.35), cy + r * Math.sin(-0.35)).lineWidth(0.9 * k).stroke('#12303A').circle(cx, cy, 1.4 * k).fill('#12303A').restore();
+  doc.font('Helvetica-Bold').fontSize(13 * k).fillColor('#12303A').text('RTP', x + 25 * k, y + 7.2 * k, { lineBreak: false });
+  const lx = x + w - 8 * k, ly = y + 7 * k;
+  doc.save().roundedRect(lx - 3.6 * k, ly + 1.4 * k, 7.2 * k, 5.6 * k, 0.8 * k).fill('#12303A').restore();
+  doc.save().path(`M ${lx - 2.3 * k} ${ly + 1.6 * k} L ${lx - 2.3 * k} ${ly - 0.4 * k} A ${2.3 * k} ${2.3 * k} 0 0 1 ${lx + 2.3 * k} ${ly - 0.4 * k} L ${lx + 2.3 * k} ${ly + 1.6 * k}`).lineWidth(1.1 * k).stroke('#12303A').restore();
+  doc.font('Helvetica').fontSize(5.7 * k).fillColor('#333').text('assinatura eletrônica', x, y + h - 10 * k, { width: w, align: 'center', lineBreak: false });
   doc.fillColor('#000');
 }
 
@@ -305,38 +304,38 @@ const signedWhen = (iso: string) => {
 };
 export const signatureId = (hash: string) => hash.slice(0, 16).toUpperCase().replace(/(.{4})(?=.)/g, '$1-');
 
+// Compact signature block: seal and three to four lines (who, when/ID/IP, signature hash).
+// The legal basis is printed once, after the blocks.
+const SIG = 7.8, SEAL_K = 0.8;
+const R = (text: string, bold = false): Run => ({ text, bold, italic: false, underline: false });
 function signatures(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
   heading(doc, 'ASSINATURAS ELETRÔNICAS');
   if (!o.signatures.length) {
-    paragraph(doc, [{ text: o.draft ? 'Minuta em elaboração: as assinaturas eletrônicas serão colhidas depois que a ata for finalizada.' : `Nenhuma assinatura registrada até o momento${o.totalSigners ? ` (0 de ${o.totalSigners})` : ''}.`, bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 9.4 });
+    paragraph(doc, [{ text: o.draft ? 'Minuta em elaboração: as assinaturas eletrônicas serão colhidas depois que a ata for finalizada.' : `Nenhuma assinatura registrada até o momento${o.totalSigners ? ` (0 de ${o.totalSigners})` : ''}.`, bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8.6 });
     return;
   }
-  const tx = LEFT + 80, tw = WIDTH - 80;
-  doc.save().moveTo(LEFT, doc.y).lineTo(LEFT + WIDTH, doc.y).lineWidth(0.5).strokeColor('#A8A8A8').stroke().restore();
+  const sealW = 70 * SEAL_K, sealH = 38 * SEAL_K, tx = LEFT + sealW + 10, tw = WIDTH - sealW - 10;
+  const rule = () => doc.save().moveTo(LEFT, doc.y).lineTo(LEFT + WIDTH, doc.y).lineWidth(0.4).strokeColor('#B5B5B5').stroke().restore();
+  rule();
   for (const s of o.signatures) {
     const w = signedWhen(s.signedAt);
-    const parts: Run[] = [
-      { text: 'Documento assinado eletronicamente por ', bold: false, italic: false, underline: false },
-      { text: pdfSafe(s.name.toLocaleUpperCase('pt-BR')), bold: true, italic: false, underline: false },
-      ...(s.roleLabel ? [{ text: ', na qualidade de ', bold: false, italic: false, underline: false }, { text: pdfSafe(s.roleLabel), bold: true, italic: false, underline: false }] : []),
-      { text: ', em ', bold: false, italic: false, underline: false }, { text: `${w.date}, às ${w.time}`, bold: true, italic: false, underline: false },
-      { text: ', conforme horário oficial de Brasília e registro eletrônico de assinatura da plataforma RTP Inteligente, com fundamento no art. 10, § 2º, da MP nº 2.200-2/2001 e na Lei nº 14.063/2020. Identificador: ', bold: false, italic: false, underline: false },
-      { text: signatureId(s.signatureHash), bold: true, italic: false, underline: false },
-      { text: '. IP do dispositivo: ', bold: false, italic: false, underline: false }, { text: s.ip || 'não informado', bold: true, italic: false, underline: false },
-      { text: '.\nHash da assinatura (SHA-256): ', bold: false, italic: false, underline: false }, { text: s.signatureHash, bold: false, italic: false, underline: false }
-    ];
-    doc.font('Helvetica-Bold').fontSize(8.6);
-    const th = doc.heightOfString(parts.map((p) => p.text).join(''), { width: tw, lineGap: 1.2 }) + 4, h = Math.max(46, th + 12);
-    if (doc.y + h > bottomY(doc)) { doc.addPage(); doc.save().moveTo(LEFT, doc.y).lineTo(LEFT + WIDTH, doc.y).lineWidth(0.5).strokeColor('#A8A8A8').stroke().restore(); }
+    const who = [R('Assinado eletronicamente por '), R(pdfSafe(s.name.toLocaleUpperCase('pt-BR')), true), ...(s.roleLabel ? [R(` — ${pdfSafe(s.roleLabel)}`)] : [])];
+    const when = [R('em '), R(`${w.date} às ${w.time}`, true), R(' (horário de Brasília) · ID '), R(signatureId(s.signatureHash), true), R(' · IP '), R(s.ip || 'não informado', true)];
+    doc.font('Helvetica-Bold').fontSize(SIG);
+    const whoH = doc.heightOfString(who.map((p) => p.text).join(''), { width: tw, lineGap: 0.6 }), lineH = SIG * 1.16 + 0.6;
+    const th = whoH + lineH * 2 + 2, h = Math.max(sealH + 6, th + 7);
+    if (doc.y + h > bottomY(doc)) { doc.addPage(); rule(); }
     const y0 = doc.y;
-    drawSeal(doc, LEFT + 1, y0 + (h - 38) / 2);
-    const ty = y0 + (h - th) / 2 + 2;
-    doc.y = ty; richText(doc, parts, { x: tx, width: tw, align: 'left', size: 8.6, lineGap: 1.2 });
-    doc.x = LEFT; doc.y = y0 + h;
-    doc.save().moveTo(LEFT, doc.y).lineTo(LEFT + WIDTH, doc.y).lineWidth(0.5).strokeColor('#A8A8A8').stroke().restore();
+    drawSeal(doc, LEFT, y0 + (h - sealH) / 2, SEAL_K);
+    doc.y = y0 + (h - th) / 2 + 1;
+    richText(doc, who, { x: tx, width: tw, align: 'left', size: SIG, lineGap: 0.6 });
+    richText(doc, when, { x: tx, width: tw, align: 'left', size: SIG, lineGap: 0.6 });
+    doc.font('Courier').fontSize(6.6).fillColor('#333').text(`Hash SHA-256: ${s.signatureHash}`, tx, doc.y + 0.5, { width: tw, lineBreak: false });
+    doc.fillColor('#000'); doc.x = LEFT; doc.y = y0 + h;
+    rule();
   }
-  if (o.totalSigners > o.signatures.length) { doc.y += 5; paragraph(doc, [{ text: `${o.signatures.length} de ${o.totalSigners} assinaturas concluídas. As demais aparecerão aqui à medida que forem registradas.`, bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8.6 }); }
-  else doc.y += 10;
+  doc.y += 4;
+  if (o.totalSigners > o.signatures.length) paragraph(doc, [{ text: `${o.signatures.length} de ${o.totalSigners} assinaturas concluídas; as demais aparecerão aqui quando forem registradas.`, bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 7.4, gap: 3 });
 }
 
 /** QR matrix drawn as vector squares. */
@@ -348,36 +347,31 @@ export function drawQr(doc: PDFKit.PDFDocument, text: string, x: number, y: numb
   doc.fill('#000000').restore();
 }
 
-/** Legal basis of the electronic signatures, always shown on an issued ata. */
+/** Legal basis of the electronic signatures, printed once on an issued ata. */
 function legal(doc: PDFKit.PDFDocument) {
-  need(doc, 70);
-  doc.y += 2;
-  paragraph(doc, [{ text: LEGAL_TITLE, bold: true, italic: false, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8.8, gap: 2 });
-  paragraph(doc, [{ text: pdfSafe(LEGAL_BASIS), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH, size: 8.4, gap: 2 });
-  paragraph(doc, [{ text: pdfSafe(LEGAL_EVIDENCE), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH, size: 8.4, gap: 6 });
+  need(doc, 40);
+  paragraph(doc, [R('Fundamentação legal: ', true), R(pdfSafe(`${LEGAL_BASIS} ${LEGAL_EVIDENCE}`))], { x: LEFT, width: WIDTH, size: 7.2, gap: 6 });
 }
 function authenticity(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
   if (!o.draft) legal(doc);
   if (!o.code || !o.verifyUrl) {
-    need(doc, 40);
-    doc.y += 6;
-    paragraph(doc, [{ text: 'AUTENTICIDADE DO DOCUMENTO: ', bold: true, italic: false, underline: false }, { text: 'o código de verificação e o QR Code são gerados quando a ata é finalizada.', bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8.8 });
+    need(doc, 30);
+    paragraph(doc, [R('Autenticidade do documento: ', true), { text: 'o código de verificação e o QR Code são gerados quando a ata é finalizada.', bold: false, italic: true, underline: false }], { x: LEFT, width: WIDTH, align: 'left', size: 8 });
     return;
   }
-  const qr = 78, h = 96;
-  need(doc, h + 10);
-  doc.y += 6;
+  const qr = 62, h = 70; // about 2.2 cm: readable by phones, also when printed
+  need(doc, h + 6);
   const y0 = doc.y;
-  doc.save().rect(LEFT, y0, WIDTH, h).lineWidth(0.6).strokeColor('#A8A8A8').stroke().restore();
-  drawQr(doc, o.verifyUrl, LEFT + 9, y0 + (h - qr) / 2, qr);
-  const tx = LEFT + qr + 22, tw = WIDTH - qr - 32;
-  doc.font('Helvetica-Bold').fontSize(9.4).fillColor('#000').text('AUTENTICIDADE DO DOCUMENTO', tx, y0 + 9, { width: tw });
-  doc.font('Helvetica').fontSize(8.4).text('A autenticidade deste documento pode ser conferida pelo QR Code ao lado ou no endereço ', tx, doc.y + 2, { width: tw, lineGap: 1, continued: true })
-    .fillColor('#0B4F8A').text(o.verifyUrl, { link: o.verifyUrl, underline: true, continued: true }).fillColor('#000').text(', informando o código de verificação abaixo.', { underline: false });
-  doc.font('Helvetica').fontSize(8.4).text('Código de verificação: ', tx, doc.y + 3, { width: tw, continued: true }).font('Helvetica-Bold').text(o.code);
-  doc.font('Helvetica').fontSize(8.4).text(`Documento: ${c.number}   ·   Versão: ${o.version ?? 1}${o.issuedAt ? `   ·   Emitido em ${signedWhen(o.issuedAt).date}` : ''}`, tx, doc.y + 1, { width: tw });
-  if (o.contentHash) doc.font('Helvetica').fontSize(6.6).fillColor('#444').text(`Hash do conteúdo (SHA-256): ${o.contentHash}`, tx, doc.y + 2, { width: tw });
-  doc.fillColor('#000'); doc.x = LEFT; doc.y = y0 + h + 10;
+  doc.save().rect(LEFT, y0, WIDTH, h).lineWidth(0.5).strokeColor('#B5B5B5').stroke().restore();
+  drawQr(doc, o.verifyUrl, LEFT + 4, y0 + (h - qr) / 2, qr);
+  const tx = LEFT + qr + 12, tw = WIDTH - qr - 18;
+  doc.font('Helvetica-Bold').fontSize(8.6).fillColor('#000').text('AUTENTICIDADE DO DOCUMENTO', tx, y0 + 7, { width: tw });
+  doc.font('Helvetica').fontSize(7.6).text('Confira pelo QR Code ao lado ou em ', tx, doc.y + 2, { width: tw, continued: true })
+    .fillColor('#0B4F8A').text(o.verifyUrl, { link: o.verifyUrl, underline: true, continued: false });
+  doc.fillColor('#000').font('Helvetica').fontSize(7.6).text('Código de verificação: ', tx, doc.y + 2, { width: tw, continued: true }).font('Helvetica-Bold').text(`${o.code}`, { continued: true })
+    .font('Helvetica').text(`   ·   ${c.number}   ·   versão ${o.version ?? 1}${o.issuedAt ? `   ·   emitida em ${signedWhen(o.issuedAt).date}` : ''}`);
+  if (o.contentHash) doc.font('Courier').fontSize(6.4).fillColor('#444').text(`Hash do conteúdo SHA-256: ${o.contentHash}`, tx, doc.y + 2, { width: tw, lineBreak: false });
+  doc.fillColor('#000'); doc.x = LEFT; doc.y = y0 + h + 8;
 }
 
 function band(doc: PDFKit.PDFDocument, text: string) {

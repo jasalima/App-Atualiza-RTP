@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const bucket = process.env.NEON_STORAGE_BUCKET ?? 'rtp-private';
@@ -24,6 +24,12 @@ export function signedDownloadUrl(key:string,options:{filename?:string;inline?:b
 export async function headPrivateObject(key:string){
   try{const r=await storage.send(new HeadObjectCommand({Bucket:bucket,Key:key}));return {size:Number(r.ContentLength??0),contentType:r.ContentType??''};}
   catch(error){if((error as {name?:string}).name==='NotFound'||(error as {$metadata?:{httpStatusCode?:number}}).$metadata?.httpStatusCode===404)return null;throw error;}
+}
+/** Removes stored files (best effort): frees space after a deletion; the database keeps the audit record. */
+export async function deletePrivateObjects(keys:string[]){
+  let removed=0;
+  for(const key of keys.filter(Boolean)){try{await storage.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));removed++;}catch{/* already gone or unreachable: the record stays deleted */}}
+  return removed;
 }
 export function putPrivateObject(key:string,body:Buffer,contentType:string){
   return storage.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:body,ContentType:contentType}));
