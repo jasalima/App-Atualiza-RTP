@@ -5,10 +5,13 @@ import { reports as reportsApi } from '../api';
 import type { Report } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
 import { Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, useAsync, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 export default function Reports() {
   const { project, canManage, user } = useScope();
-  const { data, error, reload } = useAsync(() => reportsApi.list(project!.id), [project?.id]);
+  const { data, error, reload, refresh } = useAsync(() => reportsApi.list(project!.id), [project?.id]);
+  // A report saved by anyone appears here at once.
+  useLive(['reports'], () => void refresh(), project?.id);
   const toast = useToast();
   // Deleted reports keep their number reserved: the sequence never reuses it.
   async function remove(r: Report) {

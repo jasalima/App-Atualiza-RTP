@@ -4,6 +4,7 @@ import { executions as executionsApi, scholars as scholarsApi } from '../api';
 import type { Execution, PlanItem, Scholar } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, executionStatuses, fmt, fmtPeriod, statusLabel, useAsync, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 export type ExecutionDraft = Partial<Execution> & { plan_item_id?: string | null };
 
@@ -79,6 +80,7 @@ export default function Executions() {
     if (!scholarId && list.data?.length) setScholarId(own ? own.id : list.data[0].id);
   }, [list.data, scholarId, user.scholarId]);
   const detail = useAsync(() => scholarId ? scholarsApi.detail(scholarId) : Promise.resolve(null), [scholarId]);
+  useLive(['execution_records', 'scholars', 'work_plans', 'reports'], () => { void list.refresh(); void detail.refresh(); }, project?.id);
   const d = detail.data;
   async function remove(e: Execution) {
     if (!confirm('Excluir este registro? Ele deixará de fundamentar novos RTPs. Versões já geradas não mudam.')) return;

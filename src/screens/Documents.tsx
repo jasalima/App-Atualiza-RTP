@@ -5,6 +5,7 @@ import { documents as documentsApi, reports as reportsApi, scholars as scholarsA
 import type { DeliveryStatus, DocumentDetail, ProjectDocument, Report, ScholarOverview, TravelReport } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, today, useAsync, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 export const CATEGORIES: Record<string, string> = {
   work_plan: 'Plano de Trabalho', evidence: 'Evidência de execução', contract: 'Contrato ou termo', minutes: 'Ata',
@@ -51,6 +52,8 @@ export default function Documents() {
   const [q, setQ] = useState(''), [category, setCategory] = useState(''), [member, setMember] = useState(''), [source, setSource] = useState<Source>('all');
   const [uploading, setUploading] = useState<{ replaces?: ProjectDocument } | null>(null), [detail, setDetail] = useState<string | null>(null);
   const deliveries = useAsync(() => documentsApi.deliveries(projectId), [projectId]);
+  // Files, RTPs and travel reports added or changed by others appear without reloading the page.
+  useLive(['documents', 'reports', 'travel_reports'], () => { void data.refresh(); void deliveries.refresh(); }, projectId);
   const [sent, setSent] = useState<Sent>('all');
   const sentMap = useMemo(() => new Map((deliveries.data ?? []).map((d) => [`${d.kind}:${d.id}`, d])), [deliveries.data]);
   const stateOf = (r: Row) => r.type === 'file' ? sendState(sentMap.get(`document:${r.doc.id}`)) : r.type === 'rtp' ? sendState(sentMap.get(`rtp:${r.report.id}`), r.report.current_version) : sendState(sentMap.get(`travel:${r.travel.id}`));

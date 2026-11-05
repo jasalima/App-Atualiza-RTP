@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { scholars as scholarsApi } from '../api';
 import type { Scholar } from '../types';
 import { Drawer, Empty, Notice, PageHead, Pivot, Skeleton, Tag, errorText, fmtPeriod, nextStep, sectorsOf, useAsync, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar | null; onSaved: (s: Scholar) => void; onCancel: () => void }) {
   const { project } = useScope(), toast = useToast(), [busy, setBusy] = useState(false);
@@ -33,6 +34,7 @@ export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar |
 export default function Scholars() {
   const { project, canManage } = useScope(), toast = useToast();
   const list = useAsync(() => scholarsApi.list(project!.id), [project?.id]);
+  useLive(['scholars', 'work_plans', 'execution_records', 'reports'], () => void list.refresh(), project?.id);
   const [adding, setAdding] = useState(false), [q, setQ] = useState('');
   const rows = (list.data ?? []).filter((s) => `${s.full_name} ${s.role_area}`.toLowerCase().includes(q.toLowerCase()));
   return <>

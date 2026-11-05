@@ -3,10 +3,12 @@ import { NavLink } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { scholars as scholarsApi } from '../api';
 import { Empty, Notice, PageHead, Pivot, Skeleton, Tag, fmtPeriod, nextStep, sectorsOf, stageNames, useAsync, useScope } from '../ui';
+import { useLive } from '../live';
 
 export default function Dashboard() {
   const { project, canManage } = useScope();
-  const { data, error, loading } = useAsync(() => scholarsApi.list(project!.id), [project?.id]);
+  const { data, error, loading, refresh } = useAsync(() => scholarsApi.list(project!.id), [project?.id]);
+  useLive(['scholars', 'work_plans', 'execution_records', 'reports'], () => void refresh(), project?.id);
   const [q, setQ] = useState(''), [status, setStatus] = useState(''), [validity, setValidity] = useState(''), [from, setFrom] = useState(''), [to, setTo] = useState('');
 
   const rows = useMemo(() => (data ?? []).filter((s) => {

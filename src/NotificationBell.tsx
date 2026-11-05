@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Bell, CheckCircle2, Clock3, FilePen, PenLine, XCircle } from 'lucide-react';
 import { route } from './api';
+import { useLive } from './live';
 
 type Item = { id: string; kind: 'sign' | 'rejected' | 'waiting' | 'completed' | 'draft'; title: string; detail: string; link: string; at: string; action: boolean };
 const ICON = { sign: PenLine, rejected: XCircle, waiting: Clock3, completed: CheckCircle2, draft: FilePen };
@@ -19,6 +20,7 @@ export default function NotificationBell({ tone = 'dark', labeled = false }: { t
   const load = useCallback(() => { route<{ items: Item[]; pending: number }>('/notifications').then(setData, () => undefined); }, []);
   useEffect(() => { load(); const t = setInterval(load, 60000); window.addEventListener('focus', load); return () => { clearInterval(t); window.removeEventListener('focus', load); }; }, [load]);
   useEffect(() => { setOpen(false); load(); }, [location.pathname, load]);
+  useLive(['signature_requests', 'meeting_minutes'], () => load());
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => { if (e instanceof KeyboardEvent ? e.key === 'Escape' : !panel.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setOpen(false); };

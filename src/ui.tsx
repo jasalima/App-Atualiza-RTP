@@ -134,5 +134,11 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[]) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => { void run(); return () => { sequence.current++; }; }, [run]);
-  return { ...state, reload: run, set: (data: T) => { sequence.current++; setState({ data, loading: false }); } };
+  // Silent reload for live updates: keeps what is on screen until the new data arrives.
+  const refresh = useCallback(() => {
+    const request = ++sequence.current;
+    return Promise.resolve().then(load).then((data) => { if (request === sequence.current) setState({ data, loading: false }); }, () => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return { ...state, reload: run, refresh, set: (data: T) => { sequence.current++; setState({ data, loading: false }); } };
 }

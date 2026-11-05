@@ -5,6 +5,7 @@ import { download, scholars, travelReports } from '../api';
 import type { ScholarOverview, TravelReport } from '../types';
 import SendDocumentButton from '../SendDocumentButton';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 export default function TravelAccountability() {
   const { project, user, canManage } = useScope();
@@ -21,6 +22,7 @@ function TravelSection({ projectId, scholarId, canManage }: { projectId: string;
     setMembers(allowed); setReports(list);
     setStartFor((current) => current || allowed[0]?.id || ''); setBlankFor((current) => current || allowed[0]?.id || '');
   });
+  useLive(['travel_reports', 'scholars'], () => { void load().catch(() => undefined); }, projectId);
   useEffect(() => {
     let active = true;
     load().catch((e) => { if (active) setError(errorText(e)); }).finally(() => { if (active) setLoading(false); });
