@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const unchanged = source.rtp
       ? sql`EXISTS(SELECT 1 FROM reports WHERE id=${r.source_id}::uuid AND current_version=${source.version})`
-      : sql`EXISTS(SELECT 1 FROM travel_reports WHERE id=${r.source_id}::uuid AND updated_at=${source.travel!.report.updatedAt}::timestamptz)`;
+      : sql`EXISTS(SELECT 1 FROM travel_reports WHERE id=${r.source_id}::uuid AND date_trunc('milliseconds', updated_at)=date_trunc('milliseconds', ${source.travel!.report.updatedAt}::timestamptz))`;
     const [, updated] = await sql.transaction([
       sql`SELECT id FROM signature_requests WHERE id=${id}::uuid FOR UPDATE`,
       sql`UPDATE signature_signers SET status='signed',cpf=${cpf},signed_at=${signedAt}::timestamptz,ip=${ip},user_agent=${userAgent},document_hash=${source.hash},signature_hash=${signatureHash}

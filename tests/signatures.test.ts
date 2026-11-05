@@ -199,3 +199,11 @@ describe('signed exports', () => {
     expect(pdf).toContain('Assinado eletronicamente por Eliane Marques');
   });
 });
+
+describe('travel report timestamps', () => {
+  it('keeps updatedAt as an ISO instant Postgres can compare (Date from the driver)', async () => {
+    const { travelReportRow } = await import('../lib/travel');
+    const row = travelReportRow({ ...travelRow, created_at: new Date('2026-11-05T19:53:00.001Z'), updated_at: new Date('2026-11-05T19:54:41.152Z') });
+    expect(row.updatedAt).toBe('2026-11-05T19:54:41.152Z');
+  });
+});

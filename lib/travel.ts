@@ -27,11 +27,13 @@ export const travelReportUpdate = z.object({
   .refine((v) => v.status === 'draft' || (v.origin && v.destination && v.departureDate && v.returnDate && v.objective.trim()), { message: 'Para concluir, informe origem, destino, saída, retorno e a descrição da viagem.' });
 
 const iso = (d: unknown) => d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d ? String(d).slice(0, 10) : null;
+const stamp = (d: unknown) => d instanceof Date ? d.toISOString() : String(d ?? '');
 export const travelReportRow = (r: Record<string, unknown>) => ({
   id: String(r.id), projectId: String(r.project_id), scholarId: String(r.scholar_id), scholarName: r.full_name ? String(r.full_name) : undefined,
   origin: String(r.origin ?? ''), destination: String(r.destination ?? ''), departureDate: iso(r.departure_date), returnDate: iso(r.return_date), paymentDate: iso(r.payment_date),
   objective: String(r.objective ?? ''), entries: (r.entries ?? []) as Array<{ date: string; activity: string }>, photos: (r.photos ?? []) as TravelPhoto[], status: String(r.status),
-  createdAt: String(r.created_at), updatedAt: String(r.updated_at)
+  // ISO strings: String(Date) is not parseable by Postgres and drops the milliseconds.
+  createdAt: stamp(r.created_at), updatedAt: stamp(r.updated_at)
 });
 
 /** A photo of the "Registro fotográfico" page, stored as JPEG in the private bucket. */
