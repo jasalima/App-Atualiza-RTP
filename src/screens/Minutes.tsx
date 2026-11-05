@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
-  Archive, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, CopyPlus, Download, ExternalLink, FilePlus2, FileSignature, FileText, ListPlus, Lock, Paperclip,
+  Archive, ArrowDown, Eye, ArrowLeft, ArrowUp, Check, Copy, CopyPlus, Download, ExternalLink, FilePlus2, FileSignature, FileText, ListPlus, Lock, Paperclip,
   PenLine, Plus, RotateCcw, Send, ShieldCheck, Trash2, UserPlus, X
 } from 'lucide-react';
 import { minutes as minutesApi, signatures, route } from '../api';
@@ -100,15 +100,19 @@ export function MinuteEditor() {
   const { id } = useParams(), toast = useToast(), navigate = useNavigate(), { canManage, user } = useScope();
   const [view, setView] = useState<MinuteView | null>(null), [error, setError] = useState('');
   const [draft, setDraft] = useState<MinuteDraft | null>(null), [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [savedAt, setSavedAt] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false), [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState(false), [sending, setSending] = useState(false), [viewOnly, setViewOnly] = useState<boolean | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const candidates = useAsync(() => (view ? minutesApi.participants(view.projectId) : Promise.resolve([] as ParticipantCandidate[])), [view?.projectId]);
   const load = useCallback(async () => {
-    try { const v = await minutesApi.get(id!); setView(v); setDraft(v.draft); setDirty(false); setError(''); }
+    try {
+      const v = await minutesApi.get(id!); setView(v); setDraft(v.draft); setDirty(false); setError('');
+      // An ata being written by someone else opens read-only: looking at it changes nothing.
+      setViewOnly((current) => current ?? (!v.isAuthor && ['draft', 'editing'].includes(v.status)));
+    }
     catch (e) { setError(errorText(e)); }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
-  const editable = !!view && view.canEdit && ['draft', 'editing'].includes(view.status);
+  const editable = !!view && view.canEdit && ['draft', 'editing'].includes(view.status) && !viewOnly;
   // New signatures (or a status change by someone else) show up at once; never while the text is being edited.
   useLive(['signature_requests', 'meeting_minutes'], () => { if (!editable && !dirty) void load(); }, view?.projectId);
   const change = (patch: Partial<MinuteDraft>) => { setDraft((d) => (d ? { ...d, ...patch } : d)); setDirty(true); };
@@ -127,7 +131,8 @@ export function MinuteEditor() {
     catch (e) { toast(errorText(e), 'crit'); return false; }
     finally { saving$.current = false; setSaving(false); }
   }, [id, toast]);
-  useEffect(() => { if (!dirty || !editable) return; const t = setTimeout(() => void save(true), 2000); return () => clearTimeout(t); }, [draft, dirty, editable, save]);
+  // Automatic save: quick on the first change of an unnumbered ata (it gets its number), then every 2 s after the last change.
+  useEffect(() => { if (!dirty || !editable) return; const t = setTimeout(() => void save(true), view && !view.number.includes('Nº') ? 600 : 2000); return () => clearTimeout(t); }, [draft, dirty, editable, save]);
   useEffect(() => { const warn = (e: BeforeUnloadEvent) => { if (dirty) e.preventDefault(); }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn); }, [dirty]);
 
   async function act(fn: () => Promise<unknown>, done: string) {
@@ -155,7 +160,7 @@ export function MinuteEditor() {
         <p>{draft.subject || <span className="muted">Defina o assunto da reunião</span>}</p>
       </div>
       <div className="minute-bar-actions">
-        {editable && <span className="minute-bar-save" aria-live="polite">{saving ? 'Salvando…' : dirty ? 'Alterações não salvas' : savedAt ? `Salvo às ${new Date(savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Tudo salvo'}</span>}
+        {editable && <span className="minute-bar-save" aria-live="polite">{saving ? 'Salvando…' : dirty ? 'Salvamento automático em instantes…' : savedAt ? `Salvo às ${new Date(savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Tudo salvo'}</span>}
         {editable && <button className="btn" disabled={saving || !dirty} onClick={() => void save()}><Check />Salvar</button>}
         <button className="btn" onClick={() => void openPreview()}><FileText />{editable ? 'Pré-visualizar' : 'Ver PDF'}</button>
         <a className="btn" href={minutesApi.pdfUrl(view.id, true)} onClick={(e) => { if (dirty && editable) { e.preventDefault(); void save(true).then((ok) => { if (ok) window.location.href = minutesApi.pdfUrl(view.id, true); }); } }}><Download />Baixar PDF</a>
@@ -170,6 +175,7 @@ export function MinuteEditor() {
         <iframe title={`PDF de ${view.number}`} src={preview} />
       </div>
     </div>}
+    {viewOnly && ['draft', 'editing'].includes(view.status) && <div className="view-only-banner" role="status"><Eye /><div><b>Você está visualizando{view.author ? ` a ata em elaboração por ${view.author}` : ''}</b><span>Nada é alterado nem salvo enquanto você olha. O conteúdo se atualiza sozinho à medida que a ata é salva.</span></div>{view.canEdit && <button className="btn" onClick={() => { if (confirm(`Editar a ata${view.author ? ` de ${view.author}` : ''}? Se a pessoa estiver editando ao mesmo tempo, a última alteração salva prevalece.`)) setViewOnly(false); }}><PenLine />Editar ata</button>}</div>}
     {view.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Ata cancelada">{view.statusReason}</Notice></div>}
     {!view.canEdit && ['draft', 'editing'].includes(view.status) && <div style={{ marginBottom: 16 }}><Notice tone="info">Somente quem criou a ata ou a coordenação do projeto pode alterá-la.</Notice></div>}
     {!editable && ['finalized', 'archived'].includes(view.status) && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Conteúdo congelado">A versão {version?.version} foi emitida com o hash SHA-256 e o código {version?.publicCode}. Para corrigir o texto, reabra a edição: a versão atual passa a constar como substituída.</Notice></div>}

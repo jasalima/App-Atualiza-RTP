@@ -75,3 +75,9 @@
 .paper-trip td{overflow-wrap:anywhere}
 .paper-trip .seal{max-width:100%;min-width:0}
 .paper-trip .seal-body code{word-break:break-all}
+.view-only-banner{display:flex;align-items:center;gap:14px;padding:12px 16px;margin-bottom:16px;border-radius:var(--r-md);background:var(--water-wash);border:1px solid #a9c9dc;color:var(--water-deep)}
+.view-only-banner>svg{width:22px;height:22px;flex-shrink:0}
+.view-only-banner div{flex:1;display:flex;flex-direction:column}
+.view-only-banner b{font-size:14.5px}
+.view-only-banner span{font-size:13px;color:var(--ink-2)}
+@media (max-width:600px){.view-only-banner{flex-wrap:wrap}.view-only-banner .btn{width:100%}}

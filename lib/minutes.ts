@@ -131,11 +131,14 @@ export async function minuteView(id: string) {
   const access = await minuteAccess(id), row = access.row;
   const [version] = await sql`SELECT id,version,content_hash,public_code,status,issued_at FROM meeting_minute_versions WHERE minute_id=${id}::uuid ORDER BY version DESC LIMIT 1`;
   const signatures = version ? await versionSignatures(String(version.id)) : { request: null, signers: [] };
+  // Who is writing the ata: shown to others, who open it read-only.
+  const [author] = await sql`SELECT coalesce(s.full_name,u.name,u.email) AS name FROM neon_auth."user" u
+    LEFT JOIN scholars s ON s.project_id=${row.project_id}::uuid AND s.deleted_at IS NULL AND s.email<>'' AND lower(s.email)=lower(u.email) WHERE u.id::text=${row.created_by}`;
   const signed = signatures.signers.filter((s) => s.status === 'signed').length;
   const status = displayStatus(row.status as MinuteStatus, signatures.request ? { status: String(signatures.request.status), signed, total: signatures.signers.length } : null);
   return {
     id, projectId: String(row.project_id), projectTitle: String(row.project_title), number: minuteNumber(Number(row.seq), Number(row.year)), status: String(row.status), displayStatus: status,
-    statusReason: row.status_reason ? String(row.status_reason) : null, canEdit: access.canEdit, manager: access.manager, createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    statusReason: row.status_reason ? String(row.status_reason) : null, canEdit: access.canEdit, author: String(author?.name ?? ''), isAuthor: row.created_by === access.session.user.id, manager: access.manager, createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     draft: await draftOf(row),
     version: version ? { id: String(version.id), version: Number(version.version), contentHash: String(version.content_hash), publicCode: String(version.public_code), status: String(version.status), issuedAt: new Date(version.issued_at as string).toISOString(), verifyUrl: minuteVerifyLink(String(version.public_code)) } : null,
     request: signatures.request ? requestView(signatures.request, signatures.signers as never) : null
