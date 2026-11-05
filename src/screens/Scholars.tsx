@@ -5,6 +5,9 @@ import { scholars as scholarsApi } from '../api';
 import type { Scholar } from '../types';
 import { Drawer, Empty, Notice, PageHead, Pivot, Skeleton, Tag, errorText, fmtPeriod, nextStep, sectorsOf, useAsync, useScope, useToast } from '../ui';
 import { useLive } from '../live';
+import { normalizeCpf } from '@/lib/cpf';
+
+const formatCpf = (v?: string) => { const d = (v ?? '').replace(/\D/g, ''); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : d; };
 
 export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar | null; onSaved: (s: Scholar) => void; onCancel: () => void }) {
   const { project } = useScope(), toast = useToast(), [busy, setBusy] = useState(false);
@@ -12,6 +15,7 @@ export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar |
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
     if (body.endsOn < body.startsOn) return toast('A vigência final é anterior à inicial.', 'crit');
+    if (body.cpf?.trim() && !normalizeCpf(body.cpf)) return toast('CPF inválido: confira os 11 dígitos.', 'crit');
     setBusy(true);
     try { onSaved(scholar ? await scholarsApi.update(scholar.id, body) : await scholarsApi.create(project!.id, body)); }
     catch (x) { toast(/duplicate|unique/i.test(errorText(x)) ? 'Já existe um bolsista com esse nome neste projeto.' : errorText(x), 'crit'); }
@@ -22,6 +26,7 @@ export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar |
     <label className="field">Função ou área de atuação<input name="roleArea" defaultValue={scholar?.role_area} /></label>
     <label className="field">Telefone / WhatsApp<input name="phone" type="tel" placeholder="5563999999999" defaultValue={scholar?.phone} /><small>Informe DDI e DDD para envio de documentos.</small></label>
     <label className="field">E-mail<input name="email" type="email" defaultValue={scholar?.email} /></label>
+    <label className="field">CPF<input name="cpf" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" defaultValue={formatCpf(scholar?.cpf)} /></label>
     <label className="field">Modalidade da bolsa<input name="scholarshipType" defaultValue={scholar?.scholarship_type} /></label>
     <label className="field">Vigência inicial<input name="startsOn" type="date" required defaultValue={scholar?.starts_on} /></label>
     <label className="field">Vigência final<input name="endsOn" type="date" required defaultValue={scholar?.ends_on} /></label>

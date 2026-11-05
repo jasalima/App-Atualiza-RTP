@@ -38,7 +38,7 @@ const projectColumns = (x: Record<string, any>) => ({
   general_objective: x.generalObjective ?? '', city: x.city, status: x.status ?? 'active', agreement: x.agreement ?? ''
 });
 const scholarColumns = (x: Record<string, any>) => ({
-  ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}),
+  ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}), ...(x.cpf !== undefined ? { cpf: String(x.cpf).replace(/\D/g, '') } : {}),
   full_name: x.fullName, role_area: x.roleArea ?? '', scholarship_type: x.scholarshipType ?? '',
   starts_on: x.startsOn, ends_on: x.endsOn, status: x.status ?? 'active', notes: x.notes ?? ''
 });

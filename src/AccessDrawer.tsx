@@ -28,6 +28,11 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
   const member = members?.find((m) => m.id === scholarId);
   const mismatch = !!member?.email && member.email.trim().toLowerCase() !== user.email.toLowerCase();
   const linkable = role === 'scholar' || role === 'signer';
+  // The member record (Bolsistas) may already hold the CPF and WhatsApp: offer them for the empty fields.
+  const digitsOf = (v?: string) => (v ?? '').replace(/\D/g, '');
+  const recordCpf = !mismatch && digitsOf(member?.cpf).length === 11 && !digitsOf(identity.cpf) ? digitsOf(member?.cpf) : '';
+  const recordPhone = !mismatch && digitsOf(member?.phone).length >= 12 && digitsOf(identity.phone).length < 12 ? digitsOf(member?.phone) : '';
+  const fromRecord = identityLoaded && (recordCpf || recordPhone) ? { cpf: recordCpf, phone: recordPhone } : null;
   async function save(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
     try {
@@ -44,6 +49,10 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
         <p className="muted">Confira o CPF com a pessoa antes de confirmar. Ele fica vinculado exclusivamente a este login. Sem este cadastro, a conta não pode assinar.</p>
         <label className="field">CPF confirmado<input inputMode="numeric" value={identity.cpf} disabled={!identityLoaded || busy} maxLength={20} onChange={e => { setIdentity({ ...identity, cpf: e.target.value }); setIdentityDirty(true); }} /></label>
         <label className="field">WhatsApp da pessoa (DDI + DDD)<input type="tel" value={identity.phone} disabled={!identityLoaded || busy} maxLength={35} placeholder="5563999999999" onChange={e => { setIdentity({ ...identity, phone: e.target.value }); setIdentityDirty(true); }} /></label>
+        {fromRecord && <div className="notice-inline" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <small className="muted">O cadastro do bolsista tem {[fromRecord.cpf && 'CPF', fromRecord.phone && 'WhatsApp'].filter(Boolean).join(' e ')} que ainda não {fromRecord.cpf && fromRecord.phone ? 'estão' : 'está'} aqui.</small>
+          <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { setIdentity({ cpf: fromRecord.cpf || identity.cpf, phone: fromRecord.phone || identity.phone }); setIdentityDirty(true); }}>Usar dados do cadastro</button>
+        </div>}
         {identityDirty && <label className="field">Motivo e conferência do cadastro<input required minLength={5} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex.: dados conferidos diretamente com o titular" /></label>}
       </section>
       <section className="access-block">
