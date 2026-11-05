@@ -30,9 +30,11 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
   const linkable = role === 'scholar' || role === 'signer';
   // The member record (Bolsistas) may already hold the CPF and WhatsApp: offer them for the empty fields.
   const digitsOf = (v?: string) => (v ?? '').replace(/\D/g, '');
-  const recordCpf = !mismatch && digitsOf(member?.cpf).length === 11 && !digitsOf(identity.cpf) ? digitsOf(member?.cpf) : '';
-  const recordPhone = !mismatch && digitsOf(member?.phone).length >= 12 && digitsOf(identity.phone).length < 12 ? digitsOf(member?.phone) : '';
-  const fromRecord = identityLoaded && (recordCpf || recordPhone) ? { cpf: recordCpf, phone: recordPhone } : null;
+  // Always offered: the linked member or, for profiles without a link (coordination), the member with the same e-mail.
+  const record = (member && !mismatch ? member : null) ?? members?.find((m) => m.email?.trim().toLowerCase() === user.email.toLowerCase()) ?? null;
+  const recordCpf = digitsOf(record?.cpf).length === 11 ? digitsOf(record?.cpf) : '', recordPhone = digitsOf(record?.phone).length >= 12 ? digitsOf(record?.phone) : '';
+  const fromRecord = identityLoaded && record && (recordCpf || recordPhone) ? { cpf: recordCpf, phone: recordPhone } : null;
+  const sameAsRecord = !!fromRecord && (!fromRecord.cpf || fromRecord.cpf === digitsOf(identity.cpf)) && (!fromRecord.phone || fromRecord.phone === digitsOf(identity.phone));
   async function save(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
     try {
@@ -50,8 +52,8 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
         <label className="field">CPF confirmado<input inputMode="numeric" value={identity.cpf} disabled={!identityLoaded || busy} maxLength={20} onChange={e => { setIdentity({ ...identity, cpf: e.target.value }); setIdentityDirty(true); }} /></label>
         <label className="field">WhatsApp da pessoa (DDI + DDD)<input type="tel" value={identity.phone} disabled={!identityLoaded || busy} maxLength={35} placeholder="5563999999999" onChange={e => { setIdentity({ ...identity, phone: e.target.value }); setIdentityDirty(true); }} /></label>
         {fromRecord && <div className="notice-inline" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <small className="muted">O cadastro do bolsista tem {[fromRecord.cpf && 'CPF', fromRecord.phone && 'WhatsApp'].filter(Boolean).join(' e ')} que ainda não {fromRecord.cpf && fromRecord.phone ? 'estão' : 'está'} aqui.</small>
-          <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { setIdentity({ cpf: fromRecord.cpf || identity.cpf, phone: fromRecord.phone || identity.phone }); setIdentityDirty(true); }}>Usar dados do cadastro</button>
+          <small className="muted">{sameAsRecord ? `Igual ao cadastro do bolsista ${record!.full_name}.` : `Cadastro do bolsista ${record!.full_name}: ${[fromRecord.cpf && 'CPF', fromRecord.phone && 'WhatsApp'].filter(Boolean).join(' e ')} disponíveis.`}</small>
+          <button type="button" className="btn btn-sm" disabled={busy || sameAsRecord} onClick={() => { setIdentity({ cpf: fromRecord.cpf || identity.cpf, phone: fromRecord.phone || identity.phone }); setIdentityDirty(true); }}>Usar dados do cadastro</button>
         </div>}
         {identityDirty && <label className="field">Motivo e conferência do cadastro<input required minLength={5} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex.: dados conferidos diretamente com o titular" /></label>}
       </section>
