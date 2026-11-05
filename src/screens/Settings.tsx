@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Copy, Plus, UserRoundCheck, UserRoundX } from 'lucide-react';
+import { Copy, KeyRound, Plus, UserRoundCheck, UserRoundX } from 'lucide-react';
+import AccessDrawer, { ModuleChips } from '../AccessDrawer';
 import { scholars, settings, users } from '../api';
 import type { ManagedUser, Role, ScholarOverview } from '../types';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, fmt, roleLabel, useAsync, useScope, useToast } from '../ui';
@@ -13,6 +14,7 @@ export default function SettingsPage() {
   const [credential,setCredential]=useState<{email:string;password:string}|null>(null);
   const [form,setForm]=useState({name:'',email:'',role:'coordinator' as Exclude<Role,'admin'>,projectId:'',scholarId:''});
   const [projectScholars,setProjectScholars]=useState<ScholarOverview[]>([]);
+  const [editing,setEditing]=useState<ManagedUser|null>(null);
   useEffect(()=>{
     if(!form.projectId){setProjectScholars([]);return;}
     void scholars.list(form.projectId).then(setProjectScholars,()=>setProjectScholars([]));
@@ -38,10 +40,10 @@ export default function SettingsPage() {
   return <>
     <PageHead title="Configurações" description="Administração de acessos e estado das integrações do ambiente." />
     <section className="panel" style={{marginBottom:18}}>
-      <div className="panel-head"><div><h2>Usuários da aplicação</h2><p>Crie acessos com senha temporária e revogue contas sem apagar o histórico.</p></div><button className="btn btn-primary" onClick={start} disabled={!projects.length}><Plus/>Cadastrar usuário</button></div>
+      <div className="panel-head"><div><h2>Usuários da aplicação</h2><p>Crie acessos com senha temporária, habilite módulos para cada pessoa e revogue contas sem apagar o histórico.</p></div><button className="btn btn-primary" onClick={start} disabled={!projects.length}><Plus/>Cadastrar usuário</button></div>
       {managed.error?<div className="panel-pad"><Notice tone="crit">{managed.error}</Notice></div>:managed.loading?<Skeleton/>:!managed.data?.length?<Empty title="Nenhum usuário gerenciado">Cadastre o primeiro acesso depois de criar um projeto.</Empty>:
-      <div className="table-scroll"><table className="ledger users-ledger"><thead><tr><th>Usuário</th><th>Perfil</th><th>Escopo</th><th>Situação</th><th>Cadastro</th><th></th></tr></thead><tbody>
-        {managed.data.map((item)=><tr key={item.authUserId}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role?roleLabel[item.role]:'Sem vínculo'}</td><td>{item.scholarName||item.projectTitle||'Todos os projetos'}</td><td>{item.revoked?<Tag tone="crit">Revogado</Tag>:item.mustChangePassword?<Tag tone="warn">Troca pendente</Tag>:<Tag tone="ok">Ativo</Tag>}</td><td>{fmt(item.createdAt)}</td><td className="row-actions">{item.role!=='admin'&&<button className="btn btn-small" onClick={()=>void status(item)}>{item.revoked?<><UserRoundCheck/>Restaurar</>:<><UserRoundX/>Revogar</>}</button>}</td></tr>)}
+      <div className="table-scroll"><table className="ledger users-ledger"><thead><tr><th>Usuário</th><th>Perfil</th><th>Escopo</th><th>Módulos</th><th>Situação</th><th>Cadastro</th><th></th></tr></thead><tbody>
+        {managed.data.map((item)=><tr key={item.authUserId}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role?roleLabel[item.role]:'Sem vínculo'}</td><td>{item.scholarName||item.projectTitle||'Todos os projetos'}</td><td><ModuleChips role={item.role} extra={item.modules??[]} /></td><td>{item.revoked?<Tag tone="crit">Revogado</Tag>:item.mustChangePassword?<Tag tone="warn">Troca pendente</Tag>:<Tag tone="ok">Ativo</Tag>}</td><td>{fmt(item.createdAt)}</td><td className="row-actions">{item.role!=='admin'&&item.projectId&&<button className="btn btn-small" onClick={()=>setEditing(item)}><KeyRound/>Editar acesso</button>}{item.role!=='admin'&&<button className="btn btn-small" onClick={()=>void status(item)}>{item.revoked?<><UserRoundCheck/>Restaurar</>:<><UserRoundX/>Revogar</>}</button>}</td></tr>)}
       </tbody></table></div>}
     </section>
     {error ? <Notice tone="crit">{error}</Notice> : !data ? <Skeleton /> : <div className="stack">
@@ -74,6 +76,7 @@ export default function SettingsPage() {
         </div>
       </section>
     </div>}
+    {editing&&<AccessDrawer user={editing} onClose={()=>setEditing(null)} onSaved={async(msg)=>{setEditing(null);toast(msg);await managed.reload();}} />}
     <Drawer open={open} title={credential?'Credencial temporária':'Cadastrar usuário'} description={credential?'Copie agora: esta senha não será exibida novamente.':'O novo usuário deverá trocar a senha no primeiro acesso.'} onClose={close}>
       {credential?<div className="stack">
         <Notice tone="warn" title="Entrega segura">Envie a credencial diretamente ao usuário. Não use grupos ou documentos compartilhados.</Notice>

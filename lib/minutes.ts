@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requireProject } from './authorize';
+import { requireModule } from './modules';
 import { sql } from './db';
 import { clientIp, signerCandidates } from './signatures';
 import { requestView } from './signature-view';
@@ -16,7 +16,7 @@ export async function minuteAccess(id: string, write = false) {
   const [row] = await sql`SELECT m.*,to_char(m.meeting_date,'YYYY-MM-DD') AS meeting_day,p.title AS project_title FROM meeting_minutes m JOIN projects p ON p.id=m.project_id
     WHERE m.id=${id}::uuid AND m.deleted_at IS NULL`;
   if (!row) throw fail('Ata não encontrada.', 404);
-  const session = await requireProject(String(row.project_id));
+  const session = await requireModule(String(row.project_id), 'minutes');
   const manager = session.role === 'admin' || session.role === 'coordinator';
   const canEdit = manager || row.created_by === session.user.id;
   if (write && !canEdit) throw fail('Somente quem criou a ata ou a coordenação do projeto pode alterá-la.', 403);
@@ -102,7 +102,8 @@ export async function participantCandidates(projectId: string) {
   const STATUS: Record<string, string> = { active: 'Ativo', suspended: 'Suspenso', finished: 'Encerrado' };
   type Candidate = { scholarId: string | null; authUserId: string | null; name: string; role: string; email: string; institution: string; registration: string; pendingFirstAccess: boolean };
   const list: Candidate[] = scholars.map((s) => {
-    const account = accounts.find((a) => a.scholarId === s.id) ?? accounts.find((a) => s.auth_user_id && a.authUserId === s.auth_user_id);
+    // signerCandidates only links a member to an account with the same e-mail.
+    const account = accounts.find((a) => a.scholarId === s.id) ?? (!String(s.email ?? '').trim() ? accounts.find((a) => s.auth_user_id && a.authUserId === s.auth_user_id) : undefined);
     return { scholarId: String(s.id), authUserId: account?.authUserId ?? null, name: String(s.full_name), role: String(s.role_area || account?.roleLabel || ''), email: String(s.email || account?.email || ''),
       institution: institution.get(String(s.id)) ?? (account ? institution.get(account.authUserId) : undefined) ?? '', registration: STATUS[String(s.status)] ?? String(s.status), pendingFirstAccess: !!account?.pendingFirstAccess };
   });
@@ -176,7 +177,9 @@ export async function sendForSignature(id: string, request: Request) {
   const [version] = await sql`SELECT id,content_hash,content FROM meeting_minute_versions WHERE minute_id=${id}::uuid AND status='active'`;
   if (!version) throw fail('A ata não tem versão emitida.', 409);
   const draft = await draftOf(row);
-  const chosen = draft.participants.filter((p) => p.signs && p.authUserId);
+  // The account of each member is resolved again now: a link corrected after the ata was written wins.
+  const current = new Map((await participantCandidates(String(row.project_id))).filter((c) => c.scholarId).map((c) => [c.scholarId!, c.authUserId]));
+  const chosen = draft.participants.map((p) => (p.scholarId && current.has(p.scholarId) ? { ...p, authUserId: current.get(p.scholarId) ?? null } : p)).filter((p) => p.signs && p.authUserId);
   if (!chosen.length) throw fail('Marque em Participantes quem deve assinar a ata.', 400);
   const accounts = new Map((await signerCandidates(String(row.project_id))).map((c) => [c.authUserId, c]));
   const missing = chosen.filter((p) => !accounts.has(p.authUserId!));
@@ -219,7 +222,7 @@ export async function changeStatus(id: string, action: 'archive' | 'unarchive' |
 
 /** List of the project's atas with what the filters search (participants, responsible, signatures). */
 export async function listMinutes(projectId: string) {
-  await requireProject(projectId);
+  await requireModule(projectId, 'minutes');
   const rows = await sql`SELECT m.id,m.seq,m.year,m.title,m.subject,to_char(m.meeting_date,'YYYY-MM-DD') AS meeting_day,m.status,m.chaired_by,m.drafted_by,m.updated_at,
       coalesce((SELECT json_agg(p.name ORDER BY p.position) FROM meeting_minute_participants p WHERE p.minute_id=m.id AND p.attendance IN ('present','guest')),'[]') AS people,
       v.public_code,v.version,r.status AS request_status,

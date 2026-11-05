@@ -25,7 +25,9 @@ import { MinuteEditor, MinutesList } from './screens/Minutes';
 import VerifyDocumentPage from './screens/VerifyDocument';
 import './connectivity.css';
 import './minutes.css';
+import './access.css';
 import { InstallAppButton } from './pwa';
+import NotificationBell from './NotificationBell';
 
 function App() {
   // Signature verification is public: anyone holding a signed document can check it.
@@ -58,7 +60,7 @@ function Authenticated() {
   if (!authId || !user) return <Login />;
   if (user.mustChangePassword) return <ChangePassword user={user} logout={logout} onDone={()=>setUser({...user,mustChangePassword:false})} />;
   if (!user.role) return <NoAccess user={user} logout={logout} />;
-  if (user.role === 'signer') return <ToastProvider><SignerShell name={user.name} logout={logout} /></ToastProvider>;
+  if (user.role === 'signer') return <ToastProvider><SignerShell user={user} logout={logout} /></ToastProvider>;
   return <ToastProvider><Shell key={user.id} user={user} logout={logout} /></ToastProvider>;
 }
 
@@ -182,14 +184,14 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
   return <ScopeContext.Provider value={{ user, logout, projects, project, setProjectId, reloadProjects, canManage }}>
     <div className="app">
       <aside className={open ? 'rail open' : 'rail'} aria-label="Navegação principal">
-        <div className="rail-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={34} /><div><b>RTP Inteligente</b><small>FAPTO</small></div></div>
+        <div className="rail-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={34} /><div><b>RTP Inteligente</b><small>FAPTO</small></div><NotificationBell /></div>
         {projects.length > 1 && <label className="field" style={{ padding: '0 6px 6px', color: '#7f9aa0', fontWeight: 400, fontSize: 12 }}>Projeto em foco
           <select value={project?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} style={{ background: '#1b3f4b', borderColor: '#2a5566', color: '#fff', height: 34, fontSize: 13 }}>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
           </select></label>}
         <NavLink to="/" end><LayoutGrid />Visão geral</NavLink>
         {groups.map((g) => <div className="rail-group" key={g.label}><span>{g.label}</span>
-          {g.items.filter(([to]) => canManage || !['/projects', '/plans', '/generate'].includes(to)).map(([to, label, Icon]) => <NavLink key={to} to={to}><Icon />{label}</NavLink>)}
+          {g.items.filter(([to]) => (canManage || !['/projects', '/plans', '/generate'].includes(to)) && (to !== '/atas' || canManage || !!user.modules?.some((m) => m.module === 'minutes' && m.projectId === project?.id))).map(([to, label, Icon]) => <NavLink key={to} to={to}><Icon />{label}</NavLink>)}
         </div>)}
         <div className="rail-foot">
           {user.role === 'admin' && <NavLink to="/settings"><Settings />Configurações</NavLink>}
@@ -199,7 +201,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
         </div>
       </aside>
       <div className="main">
-        <div className="bar"><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu"><Menu /></button><b>RTP Inteligente</b></div>
+        <div className="bar"><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu"><Menu /></button><b>RTP Inteligente</b><span style={{ marginLeft: 'auto' }}><NotificationBell /></span></div>
         <main className="page">
           {/* Screens assume a project in focus: render them only after the list arrives. */}
           {!loaded ? <Skeleton /> : loadError ? <div className="stack"><Notice tone="crit" title="Não foi possível carregar os projetos">{loadError}</Notice><div><button className="btn btn-primary" onClick={() => void reloadProjects()}>Tentar novamente</button></div></div> :

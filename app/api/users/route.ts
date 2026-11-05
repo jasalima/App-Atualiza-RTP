@@ -30,11 +30,13 @@ export async function GET(){
       LEFT JOIN projects p ON p.id=a.project_id
       LEFT JOIN scholars s ON s.id=a.scholar_id
       ORDER BY u.name`;
+    const grants=await sql`SELECT auth_user_id,project_id,module FROM user_modules`;
     return Response.json(rows.map((row)=>({
       authUserId:row.auth_user_id,name:row.name,email:row.email,role:row.role,
       projectId:row.project_id,projectTitle:row.project_title,scholarId:row.scholar_id,
       scholarName:row.scholar_name,mustChangePassword:row.must_change_password,
       revoked:Boolean(row.revoked_at),createdAt:row.created_at,
+      modules:grants.filter((g)=>g.auth_user_id===row.auth_user_id&&g.project_id===row.project_id).map((g)=>String(g.module)),
     })),{headers:{'Cache-Control':'no-store'}});
   } catch(error) { return routeError(error); }
 }
@@ -49,8 +51,11 @@ export async function POST(request:Request){
     const [project]=await sql`SELECT id FROM projects WHERE id=${value.projectId}::uuid AND deleted_at IS NULL`;
     if(!project)throw Object.assign(new Error('Projeto não encontrado.'),{status:404});
     if(value.scholarId&&(value.role==='scholar'||value.role==='signer')){
-      const [scholar]=await sql`SELECT id FROM scholars WHERE id=${value.scholarId}::uuid AND project_id=${value.projectId}::uuid AND deleted_at IS NULL`;
+      const [scholar]=await sql`SELECT id,full_name,email FROM scholars WHERE id=${value.scholarId}::uuid AND project_id=${value.projectId}::uuid AND deleted_at IS NULL`;
       if(!scholar)throw Object.assign(new Error('O bolsista não pertence ao projeto selecionado.'),{status:400});
+      // An account represents a member only with the member's own e-mail (prevents signing in someone else's name).
+      const memberEmail=String(scholar.email??'').trim().toLowerCase();
+      if(memberEmail&&memberEmail!==value.email)throw Object.assign(new Error(`O cadastro de ${scholar.full_name} tem o e-mail ${memberEmail}. Use esse e-mail na conta ou escolha o membro correto.`),{status:400});
     }
     const password=temporaryPassword();
     createdUserId=await createAuthAccount(new URL(request.url).origin,{email:value.email,password,name:value.name});

@@ -116,7 +116,9 @@ export async function signerCandidates(projectId: string) {
     FROM user_project_access a JOIN neon_auth."user" u ON u.id::text=a.auth_user_id
     LEFT JOIN managed_users m ON m.auth_user_id=a.auth_user_id
     LEFT JOIN LATERAL (SELECT id,full_name,role_area,phone FROM scholars WHERE project_id=${projectId}::uuid AND deleted_at IS NULL
-      AND (id=a.scholar_id OR auth_user_id=a.auth_user_id OR lower(email)=lower(u.email)) ORDER BY (id=a.scholar_id) DESC NULLS LAST LIMIT 1) s ON true
+      -- An account is a member only when the e-mails agree (a wrong link must never lend someone else's name).
+      AND (lower(email)=lower(u.email) OR (coalesce(email,'')='' AND (id=a.scholar_id OR auth_user_id=a.auth_user_id)))
+      ORDER BY (lower(email)=lower(u.email)) DESC, (id=a.scholar_id) DESC NULLS LAST LIMIT 1) s ON true
     WHERE (a.project_id=${projectId}::uuid OR a.role='admin')
     ORDER BY a.auth_user_id,CASE a.role WHEN 'admin' THEN 0 WHEN 'coordinator' THEN 1 WHEN 'scholar' THEN 2 ELSE 3 END`;
   return rows.filter((r) => !r.revoked).map((r) => ({

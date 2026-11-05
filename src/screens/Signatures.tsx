@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Check, Copy, Download, ExternalLink, FileSignature, LogOut, PenLine, Send, ShieldCheck, X } from 'lucide-react';
 import { scholars as scholarsApi, signatures, users } from '../api';
-import type { MySignature, ReportContent, SignatureRequest, SignatureSigner, SignerCandidate, SigningView, TravelReport, VerifyResult } from '../types';
+import type { User, Project, MySignature, ReportContent, SignatureRequest, SignatureSigner, SignerCandidate, SigningView, TravelReport, VerifyResult } from '../types';
 import { PhotoManager, TravelFields } from '../TravelFields';
-import { Drawer, Empty, Notice, PageHead, Pivot, Skeleton, Tag, errorText, fmt, useScope, useToast } from '../ui';
+import { Drawer, Empty, Notice, PageHead, Pivot, ScopeContext, Skeleton, Tag, errorText, fmt, useScope, useToast } from '../ui';
+import { MinuteEditor, MinutesList } from './Minutes';
+import NotificationBell from '../NotificationBell';
 
 const when = (iso: string | null) => iso ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(iso)) : '';
 const requestTone: Record<SignatureRequest['status'], 'ok' | 'info' | 'warn' | 'crit' | 'mute'> = { pending: 'info', completed: 'ok', rejected: 'crit', cancelled: 'mute' };
@@ -321,19 +323,32 @@ export function VerifyPage() {
 }
 
 /* Signature-only accounts: nothing but their documents -------------------------------------------- */
-export function SignerShell({ name, logout }: { name: string; logout: () => void }) {
+export function SignerShell({ user, logout }: { user: User; logout: () => void }) {
+  // Modules enabled by the administration (e.g. Atas de Reunião) open beside the signatures.
+  const grants = (user.modules ?? []).filter((m) => m.module === 'minutes');
+  const projects = grants.map((g) => ({ id: g.projectId, title: g.projectTitle }) as Project);
+  const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
+  const project = projects.find((p) => p.id === projectId) ?? projects[0] ?? null;
+  const scope = { user, logout, projects, project, setProjectId, reloadProjects: async () => undefined, canManage: false };
   return <div className="signer-shell">
     <header className="signer-bar">
-      <NavLink to="/assinaturas" className="signer-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={28} /><span>RTP Inteligente<small>Assinatura de documentos</small></span></NavLink>
-      <span className="signer-user">{name}</span>
+      <NavLink to="/assinaturas" className="signer-brand"><Pivot sectors={['on', 'on', 'on', 'warn', 'off']} size={28} /><span>RTP Inteligente<small>{grants.length ? 'Assinaturas e atas' : 'Assinatura de documentos'}</small></span></NavLink>
+      {grants.length > 0 && <nav className="signer-nav"><NavLink to="/assinaturas">Minhas assinaturas</NavLink><NavLink to="/atas">Atas de Reunião</NavLink></nav>}
+      {projects.length > 1 && <select className="signer-project" value={project?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} aria-label="Projeto">{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
+      <NotificationBell />
+      <span className="signer-user">{user.name}</span>
       <button className="btn btn-sm" onClick={logout}><LogOut />Sair</button>
     </header>
     <main className="page">
-      <Routes>
-        <Route path="/assinaturas" element={<MySignatures />} />
-        <Route path="/assinar/:id" element={<SignPage />} />
-        <Route path="*" element={<Navigate to="/assinaturas" replace />} />
-      </Routes>
+      <ScopeContext.Provider value={scope as never}>
+        <Routes>
+          <Route path="/assinaturas" element={<MySignatures />} />
+          <Route path="/assinar/:id" element={<SignPage />} />
+          {project && <Route path="/atas" element={<MinutesList />} />}
+          {project && <Route path="/atas/:id" element={<MinuteEditor />} />}
+          <Route path="*" element={<Navigate to="/assinaturas" replace />} />
+        </Routes>
+      </ScopeContext.Provider>
     </main>
   </div>;
 }

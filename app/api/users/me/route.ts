@@ -1,5 +1,6 @@
 import { requireUser, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
+import { grantsOf } from '@/lib/modules';
 
 export async function GET(){
   try {
@@ -18,6 +19,8 @@ export async function GET(){
       projectId:access?.project_id??null,
       scholarId:access?.scholar_id??null,
       mustChangePassword,
+      // Modules enabled beyond the profile (e.g. Atas de Reunião), per project.
+      modules:mustChangePassword?[]:await grantsOf(user.id),
     },{headers:{'Cache-Control':'no-store'}});
   } catch(error) { return routeError(error); }
 }

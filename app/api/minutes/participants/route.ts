@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requireProject } from '@/lib/authorize';
+import { requireModule } from '@/lib/modules';
 import { participantCandidates } from '@/lib/minutes';
 import { travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   try {
     const projectId = z.string().uuid().parse(new URL(request.url).searchParams.get('projectId'));
-    await requireProject(projectId);
+    await requireModule(projectId, 'minutes');
     return Response.json(await participantCandidates(projectId), { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return travelError(error); }
 }

@@ -205,6 +205,8 @@ export const users = {
   list: () => route<ManagedUser[]>('/users'),
   create: (body: { name: string; email: string; role: Exclude<Role, 'admin'>; projectId: string; scholarId?: string | null }) =>
     route<{ userId: string; temporaryPassword: string; whatsappProvisioned: boolean }>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  setAccess: (id: string, body: { projectId: string; modules: string[]; scholarId: string | null }) =>
+    route<{ saved: boolean; reboundSignatures: number }>(`/users/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify(body) }),
   setStatus: (id: string, action: 'revoke' | 'restore') =>
     route<{ success: boolean }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action }) }),
   changePassword: (currentPassword: string, newPassword: string) =>
