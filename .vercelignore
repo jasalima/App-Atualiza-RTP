@@ -1,0 +1,9 @@
+.playwright-mcp
+.agents
+.codex
+docs
+tests
+scripts
+storage
+.env*
+*.log

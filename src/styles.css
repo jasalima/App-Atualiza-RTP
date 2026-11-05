@@ -2,24 +2,24 @@
 
 /* Tokens ------------------------------------------------------------------ */
 :root{
-  --ground:#e9edea;      /* sálvia fria: fundo de trabalho */
+  --ground:#f2f6f4;      /* fundo claro para jornadas longas de trabalho */
   --sheet:#ffffff;
-  --ink:#12303a;         /* petróleo: texto e menu */
-  --ink-2:#3c5560;
-  --mute:#64767a;
-  --line:#c9d3cf;
-  --line-soft:#dde4e1;
-  --pivot:#2e7a4e;       /* verde irrigado: confirmado */
-  --pivot-wash:#e1eee5;
-  --water:#1f6a96;       /* azul-água: ação */
-  --water-deep:#174f71;
-  --water-wash:#e2eef5;
-  --ochre:#b07d12;       /* cerrado: a conferir */
-  --ochre-wash:#f6edd6;
-  --alarm:#b23a2e;       /* crítico */
+  --ink:#173b43;         /* petróleo institucional */
+  --ink-2:#36565e;
+  --mute:#52696e;
+  --line:#c6d6d0;
+  --line-soft:#e0e9e5;
+  --pivot:#216444;       /* verde: conclusão e confirmação */
+  --pivot-wash:#e6f2e9;
+  --water:#126b82;       /* água: ação e navegação */
+  --water-deep:#0d5063;
+  --water-wash:#e5f2f6;
+  --ochre:#8a600d;       /* âmbar com contraste para texto */
+  --ochre-wash:#fbf0d9;
+  --alarm:#aa3027;       /* crítico */
   --alarm-wash:#f7e3df;
-  --rail:#12303a;
-  --rail-ink:#b7c9cc;
+  --rail:#143c3a;
+  --rail-ink:#c5d9d3;
   --display:var(--font-display),system-ui,sans-serif;
   --ui:var(--font-ui),system-ui,sans-serif;
   --doc:var(--font-doc),'Times New Roman',serif;
@@ -35,7 +35,7 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 h1,h2,h3,h4,p{margin:0}
 h1,h2,h3{font-family:var(--display);font-stretch:85%;letter-spacing:-.01em;font-weight:620}
 svg{flex-shrink:0}
-:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+:focus-visible{outline:3px solid var(--water);outline-offset:3px}
 ::selection{background:#cfe3d6}
 
 /* Shell ------------------------------------------------------------------- */
@@ -45,7 +45,7 @@ svg{flex-shrink:0}
 .rail-brand b{font-family:var(--display);font-stretch:80%;font-size:19px;font-weight:650;letter-spacing:-.01em;display:block;line-height:1.1}
 .rail-brand small{font-size:12px;color:var(--rail-ink)}
 .rail-group{margin-top:16px}
-.rail-group>span{display:block;font-size:12px;color:#7f9aa0;padding:0 10px 6px}
+.rail-group>span{display:block;font-size:12px;color:#b7cec7;padding:0 10px 6px}
 .rail a,.rail button{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-sm);color:var(--rail-ink);font-size:14px;border:0;background:none;width:100%;text-align:left;cursor:pointer;text-decoration:none}
 .rail a svg,.rail button svg{width:17px;height:17px;opacity:.8}
 .rail a:hover,.rail button:hover{background:#1b3f4b;color:#fff;text-decoration:none}

@@ -39,17 +39,20 @@ function db(o: { signers: ReturnType<typeof signer>[]; profile?: string; role?: 
     [/SELECT \* FROM signature_requests WHERE id=/, () => [request()]],
     [/SELECT \* FROM signature_signers WHERE request_id=/, () => o.signers],
     [/FROM user_project_access WHERE auth_user_id=\?.*coordinator/, () => (o.role ? [{ '?column?': 1 }] : [])],
-    [/FROM signer_profiles/, () => (o.profile ? [{ cpf: o.profile }] : [])],
+    [/FROM signer_identities/, () => [{ cpf: o.profile ?? (mocks.user().user.id === 'user-2' ? '11144477735' : '52998224725') }]],
     [/FROM travel_reports t JOIN scholars/, () => [travelRow]],
     [/FROM scholars s JOIN projects p/, () => [scholar]]
   ];
   mocks.handlers.splice(0, mocks.handlers.length, ...handlers);
 }
-const post = (cpf = '529.982.247-25') => sign(new Request(`https://app.example/api/signatures/${requestId}/sign`, { method: 'POST', headers: { origin: 'https://app.example', 'x-forwarded-for': '200.10.20.30, 10.0.0.1', 'user-agent': 'Vitest' }, body: JSON.stringify({ cpf, accept: true }) }), { params: Promise.resolve({ id: requestId }) });
+const post = async (cpf = mocks.user().user.id === 'user-2' ? '111.444.777-35' : '529.982.247-25', documentHash?: string) => {
+  const source = await documentSource(projectId, 'travel', reportId);
+  return sign(new Request(`https://app.example/api/signatures/${requestId}/sign`, { method: 'POST', headers: { origin: 'https://app.example', 'x-forwarded-for': '200.10.20.30, 10.0.0.1', 'user-agent': 'Vitest' }, body: JSON.stringify({ cpf, accept: true, documentHash: documentHash ?? source.hash }) }), { params: Promise.resolve({ id: requestId }) });
+};
 
 beforeEach(() => {
   mocks.calls.length = 0; mocks.transaction.mockReset(); mocks.after.mockReset();
-  mocks.transaction.mockResolvedValue([[{ id: 'signer-1' }], [], [], []]);
+  mocks.transaction.mockResolvedValue([[], [{ id: 'signer-1' }], [], [], []]);
   mocks.user.mockReturnValue({ user: { id: 'user-1', email: 'eliane@example.com' } });
 });
 
@@ -90,7 +93,7 @@ describe('signing', () => {
     expect(body.completed).toBe(false);
     expect(body.signatureHash).toMatch(/^[0-9a-f]{64}$/);
     const [statements] = mocks.transaction.mock.calls[0];
-    expect(statements).toHaveLength(4);
+    expect(statements).toHaveLength(5);
     const update = mocks.calls.find((c) => /UPDATE signature_signers SET status='signed'/.test(c.q))!;
     expect(update.values).toContain('52998224725');
     expect(update.values).toContain('200.10.20.30');
@@ -121,11 +124,16 @@ describe('signing', () => {
     mocks.transaction.mockResolvedValue([[], [], [], []]);
     expect((await post()).status).toBe(409);
   });
-  it('rejects an invalid CPF or one different from earlier signatures', async () => {
+  it('rejects an invalid CPF or one different from the registered identity', async () => {
     db({ signers: [signer(1, 'pending'), signer(2, 'waiting')] });
     expect((await post('123.456.789-00')).status).toBe(400);
     db({ signers: [signer(1, 'pending'), signer(2, 'waiting')], profile: '11144477735' });
-    expect((await post()).status).toBe(409);
+    expect((await post()).status).toBe(403);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('refuses to sign a version changed since the signer reviewed it', async () => {
+    db({ signers: [signer(1, 'pending')] });
+    expect((await post('52998224725', 'b'.repeat(64))).status).toBe(409);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it('belongs only to its signers and the project team', async () => {

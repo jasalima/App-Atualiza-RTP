@@ -6,6 +6,7 @@ import { completedMessage, signatureMessage } from './signature-view';
 import { putPrivateObject } from './storage';
 import { minuteVerifyLink } from './minutes-core';
 import { moduleSender, ownWhatsApp } from './whatsapp-connections';
+import { externalRecipient } from './external-signatures';
 
 // What happens after each signature, without making the signer wait:
 // - someone still has to sign: that person receives, through the WhatsApp of whoever
@@ -93,13 +94,19 @@ async function dispatchParallel(request: Loaded['request'], signers: Loaded['sig
   const ids = completed
     ? [...new Set([...signers.map((s) => s.auth_user_id), creator])]
     : signers.filter((s) => s.status === 'pending' && s.auth_user_id !== creator).map((s) => s.auth_user_id);
-  const targets = ids.filter((uid) => uid !== from_).map((uid) => ({ person: people.find((p) => p.authUserId === uid), signer: completed ? null : signers.find((s) => s.auth_user_id === uid) ?? null, uid }));
+  const targets = await Promise.all(ids.filter((uid) => uid !== from_).map(async (uid) => {
+    const slot = signers.find(s => s.auth_user_id === uid);
+    const external = uid.startsWith('external:') && slot ? await externalRecipient(slot.id, completed) : null;
+    return { person: external ? { name: slot!.name, phone: external.phone, pendingFirstAccess: false } : people.find((p) => p.authUserId === uid), signer: completed ? null : slot ?? null, uid, external };
+  }));
   if (!targets.length) return;
   const from = { name: voice?.name ?? 'Coordenação do projeto', role: voice?.roleLabel ?? '' };
-  for (const { person, signer, uid } of targets) {
+  for (const { person, signer, uid, external } of targets) {
     const name = signer?.name ?? person?.name ?? signers.find((s) => s.auth_user_id === uid)?.name ?? 'Destinatário';
     if (!person?.phone) { await log(projectId, from_, requestId, 'dispatch_skipped', { reason: `${name} sem telefone cadastrado.` }); continue; }
-    const caption = signer
+    const caption = signer && external
+      ? `RTP Inteligente\nOlá, ${signer.name}. Você foi convidado(a) a assinar ${source.label}.\nLeia e assine pelo seu link individual: ${external.link}\nNão é necessário criar conta. Confirme seu CPF e o código enviado ao seu WhatsApp. O link vale por 7 dias. Não compartilhe o link nem o código.`
+      : signer
       ? signatureMessage({ name: signer.name, label: source.label, link: signLink(requestId), firstAccess: person.pendingFirstAccess, from, signers, currentStep: signer.step, parallel: true })
       : completedMessage({ name: person.name, label: source.label, code, verifyUrl: minuteVerifyLink(code), signers, parallel: true });
     try {

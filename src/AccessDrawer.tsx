@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import { scholars, users } from './api';
+import { scholars, users, route } from './api';
 import type { ManagedUser, Role, ScholarOverview } from './types';
 import { GRANTABLE, MODULES, PROFILE_MODULES, type ModuleKey } from '@/lib/modules-catalog';
 import { Drawer, Notice, Skeleton, errorText, roleLabel } from './ui';
@@ -22,6 +22,8 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
   const role = user.role!, own = PROFILE_MODULES[role] ?? [];
   const [modules, setModules] = useState<string[]>(user.modules ?? []), [scholarId, setScholarId] = useState(user.scholarId ?? '');
   const [members, setMembers] = useState<ScholarOverview[] | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [identity, setIdentity] = useState({ cpf: '', phone: '' }), [identityLoaded, setIdentityLoaded] = useState(false), [identityDirty, setIdentityDirty] = useState(false), [reason, setReason] = useState('');
+  useEffect(() => { void route<{ cpf: string; phone: string }>(`/users/${user.authUserId}/identity`).then(v => { setIdentity(v); setIdentityLoaded(true); }, e => setError(errorText(e))); }, [user.authUserId]);
   useEffect(() => { void scholars.list(user.projectId!).then(setMembers, (e) => setError(errorText(e))); }, [user.projectId]);
   const member = members?.find((m) => m.id === scholarId);
   const mismatch = !!member?.email && member.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -29,6 +31,7 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
   async function save(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
     try {
+      if (identityDirty) await route(`/users/${user.authUserId}/identity`, { method: 'PUT', body: JSON.stringify({ ...identity, reason }) });
       const r = await users.setAccess(user.authUserId, { projectId: user.projectId!, modules, scholarId: linkable ? scholarId || null : null });
       await onSaved(r.reboundSignatures ? `Acesso atualizado. ${r.reboundSignatures} assinatura(s) pendente(s) voltaram para a conta do próprio membro.` : 'Acesso atualizado.');
     } catch (x) { setError(errorText(x)); } finally { setBusy(false); }
@@ -36,6 +39,13 @@ export default function AccessDrawer({ user, onClose, onSaved }: { user: Managed
   return <Drawer open title="Editar acesso" description={`${user.name} · ${user.email}`} onClose={() => !busy && onClose()}>
     <form className="stack" onSubmit={save}>
       <dl className="facts"><div><dt>Perfil</dt><dd>{roleLabel[role]}</dd></div><div><dt>Projeto</dt><dd>{user.projectTitle}</dd></div></dl>
+      <section className="access-block stack">
+        <h4>Identidade para assinatura</h4>
+        <p className="muted">Confira o CPF com a pessoa antes de confirmar. Ele fica vinculado exclusivamente a este login. Sem este cadastro, a conta não pode assinar.</p>
+        <label className="field">CPF confirmado<input inputMode="numeric" value={identity.cpf} disabled={!identityLoaded || busy} maxLength={20} onChange={e => { setIdentity({ ...identity, cpf: e.target.value }); setIdentityDirty(true); }} /></label>
+        <label className="field">WhatsApp da pessoa (DDI + DDD)<input type="tel" value={identity.phone} disabled={!identityLoaded || busy} maxLength={35} placeholder="5563999999999" onChange={e => { setIdentity({ ...identity, phone: e.target.value }); setIdentityDirty(true); }} /></label>
+        {identityDirty && <label className="field">Motivo e conferência do cadastro<input required minLength={5} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex.: dados conferidos diretamente com o titular" /></label>}
+      </section>
       <section className="access-block">
         <h4>Incluído pelo perfil</h4>
         <div className="module-chips">{own.map((m) => <span key={m} className="module-chip">{MODULES[m].label}</span>)}</div>

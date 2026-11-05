@@ -17,12 +17,7 @@ export const verifyLink = (code: string) => `${APP_URL}/verificar/${code}`;
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status });
 
 /** Valid Brazilian CPF (11 digits with both check digits), returned as digits only. */
-export function normalizeCpf(value: string) {
-  const d = String(value ?? '').replace(/\D/g, '');
-  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return null;
-  const check = (len: number) => { let sum = 0; for (let i = 0; i < len; i++) sum += Number(d[i]) * (len + 1 - i); const r = (sum * 10) % 11; return r === 10 ? 0 : r; };
-  return check(9) === Number(d[9]) && check(10) === Number(d[10]) ? d : null;
-}
+export { normalizeCpf } from './cpf';
 /** Client IP as seen by the Vercel edge (first hop of x-forwarded-for). */
 export const clientIp = (request: Request) => (request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || '').trim().slice(0, 64);
 
@@ -152,10 +147,11 @@ export async function fullTravelFill(report: Awaited<ReturnType<typeof travelRep
 const ROLE_LABEL: Record<string, string> = { admin: 'Administração do sistema', coordinator: 'Coordenação do projeto', scholar: 'Bolsista', signer: 'Membro da equipe' };
 /** Accounts that can sign documents of a project, with the name and function printed on the signature. */
 export async function signerCandidates(projectId: string) {
-  const rows = await sql`SELECT DISTINCT ON (a.auth_user_id) a.auth_user_id,a.role,u.email,coalesce(s.full_name,m.name,u.name,u.email) AS name,s.id AS scholar_id,s.role_area,s.phone,
+  const rows = await sql`SELECT DISTINCT ON (a.auth_user_id) a.auth_user_id,a.role,u.email,coalesce(s.full_name,m.name,u.name,u.email) AS name,s.id AS scholar_id,s.role_area,coalesce(nullif(identity.phone,''),s.phone,'') AS phone,
       m.must_change_password,(m.revoked_at IS NOT NULL) AS revoked
     FROM user_project_access a JOIN neon_auth."user" u ON u.id::text=a.auth_user_id
     LEFT JOIN managed_users m ON m.auth_user_id=a.auth_user_id
+    LEFT JOIN signer_identities identity ON identity.auth_user_id=a.auth_user_id
     LEFT JOIN LATERAL (SELECT id,full_name,role_area,phone FROM scholars WHERE project_id=${projectId}::uuid AND deleted_at IS NULL
       -- An account is a member only when the e-mails agree (a wrong link must never lend someone else's name).
       AND (lower(email)=lower(u.email) OR (coalesce(email,'')='' AND (id=a.scholar_id OR auth_user_id=a.auth_user_id)))
