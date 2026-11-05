@@ -33,8 +33,8 @@ function Seal({ s }: { s: SignatureSigner }) {
 }
 
 /** Order of signers with their state. */
-function Steps({ signers }: { signers: SignatureSigner[] }) {
-  return <ol className="sign-steps">{signers.map((s) => { const [text, tone] = signerText[s.status]; return <li key={s.id} data-status={s.status}>
+function Steps({ signers, parallel }: { signers: SignatureSigner[]; parallel?: boolean }) {
+  return <ol className="sign-steps">{signers.map((s) => { const [text, tone] = parallel && s.status === 'pending' ? ['Pendente', 'warn' as const] : signerText[s.status]; return <li key={s.id} data-status={s.status}>
     <span className="sign-step-n">{s.status === 'signed' ? <Check /> : s.step}</span>
     <div><b>{s.name}</b><small>{s.roleLabel}</small>{s.signedAt && <small>Assinou em {when(s.signedAt)}{s.cpf ? `, CPF ${s.cpf}` : ''}</small>}{s.rejectReason && <small>Motivo: {s.rejectReason}</small>}</div>
     <Tag tone={tone}>{text}</Tag>
@@ -213,9 +213,9 @@ export function SignPage() {
   useEffect(() => { void load(); }, [load]);
   if (error) return <div className="stack"><Notice tone="crit" title="Não foi possível abrir o documento">{error}</Notice><div><NavLink className="btn" to="/assinaturas">Minhas assinaturas</NavLink></div></div>;
   if (!view) return <Skeleton />;
-  const r = view.request, doc = view.document, me = view.me;
-  const dirty = editing && draft !== null && JSON.stringify(draft) !== JSON.stringify(doc.kind === 'travel' ? doc.report : doc.content.sections);
-  function startEdit() { setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); }
+  const r = view.request, doc = view.document, me = view.me, parallel = (view.mode ?? r.mode) === 'parallel';
+  const dirty = editing && draft !== null && JSON.stringify(draft) !== JSON.stringify(doc.kind === 'travel' ? doc.report : doc.kind === 'rtp' ? doc.content.sections : null);
+  function startEdit() { if (doc.kind === 'minutes') return; setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); }
   async function save() {
     setSaving(true);
     try {
@@ -237,12 +237,12 @@ export function SignPage() {
   const waitingTurn = r.status === 'pending' && me?.status === 'waiting';
 
   return <>
-    <NavLink to={view.manager ? (doc.kind === 'travel' ? `/travel/${r.sourceId}` : `/reports/${r.sourceId}`) : '/assinaturas'} className="back"><ArrowLeft />{view.manager ? 'Voltar ao documento' : 'Minhas assinaturas'}</NavLink>
+    <NavLink to={view.manager ? (doc.kind === 'travel' ? `/travel/${r.sourceId}` : doc.kind === 'minutes' ? `/atas/${doc.minuteId}` : `/reports/${r.sourceId}`) : '/assinaturas'} className="back"><ArrowLeft />{view.manager ? 'Voltar ao documento' : 'Minhas assinaturas'}</NavLink>
     <div className="head">
-      <div><h1>{doc.kind === 'travel' ? 'Relatório de viagem' : `RTP ${doc.number}`}</h1><p>{r.label}. {view.projectTitle}</p></div>
+      <div><h1>{doc.kind === 'travel' ? 'Relatório de viagem' : doc.kind === 'minutes' ? doc.number : `RTP ${doc.number}`}</h1><p>{r.label}. {view.projectTitle}</p></div>
       <div className="head-actions"><Tag tone={requestTone[r.status]}>{requestText[r.status]}</Tag></div>
     </div>
-    {result && <div style={{ marginBottom: 16 }}><Notice tone="ok" title="Assinatura registrada">{result.completed ? <>Todas as assinaturas foram concluídas. Código de verificação: <b>{result.code}</b>.</> : 'O documento segue agora para a próxima pessoa da ordem de assinatura.'}</Notice></div>}
+    {result && <div style={{ marginBottom: 16 }}><Notice tone="ok" title="Assinatura registrada">{result.completed ? (doc.kind === 'minutes' ? <>Todas as assinaturas foram concluídas. A ata assinada pode ser conferida pelo código <b>{doc.publicCode}</b>.</> : <>Todas as assinaturas foram concluídas. Código de verificação: <b>{result.code}</b>.</>) : parallel ? 'Sua assinatura foi incluída na ata. Os demais participantes continuam podendo assinar.' : 'O documento segue agora para a próxima pessoa da ordem de assinatura.'}</Notice></div>}
     {r.status === 'rejected' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Assinatura recusada">{r.closedReason}</Notice></div>}
     {r.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="mute" title="Solicitação cancelada pela coordenação">{r.closedReason}</Notice></div>}
 
@@ -257,13 +257,15 @@ export function SignPage() {
               <label className="field" key={k}>{label}<textarea value={(draft as ReportContent['sections'])[k]} onChange={(e) => setDraft({ ...(draft as ReportContent['sections']), [k]: e.target.value })} style={{ minHeight: 200 }} /></label>)}
           </section>}
           <div className="head-actions"><button className="btn btn-quiet" disabled={saving} onClick={() => { setEditing(false); setDraft(null); }}>Descartar</button><button className="btn btn-primary" disabled={saving || (!dirty && doc.kind !== 'travel')} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar alterações'}</button></div>
-        </> : doc.kind === 'travel' ? <Form26Preview view={view as SigningView & { document: { kind: 'travel' } }} /> : <RtpPreview content={doc.content} />}
+        </> : doc.kind === 'travel' ? <Form26Preview view={view as SigningView & { document: { kind: 'travel' } }} /> : doc.kind === 'minutes'
+          ? <iframe className="paper-frame" title={`${doc.number} em PDF`} src={`${signatures.fileUrl(r.id, 'pdf')}#view=FitH`} />
+          : <RtpPreview content={doc.content} />}
       </div>
 
       <aside className="side">
         <div className="panel">
-          <h3>Ordem de assinatura</h3>
-          <Steps signers={r.signers} />
+          <h3>{parallel ? 'Assinaturas (em qualquer ordem)' : 'Ordem de assinatura'}</h3>
+          <Steps signers={r.signers} parallel={parallel} />
         </div>
         {view.canSign && <form className="panel stack" style={{ gap: 12 }} onSubmit={sign}>
           <h3 style={{ marginBottom: 0 }}><PenLine size={17} style={{ verticalAlign: '-3px', marginRight: 6 }} />Assinar eletronicamente</h3>
@@ -283,8 +285,9 @@ export function SignPage() {
           <h3>Documento</h3>
           <div style={{ display: 'grid', gap: 8 }}>
             <a className="btn btn-block" href={signatures.fileUrl(r.id, 'pdf')} target="_blank" rel="noreferrer"><ExternalLink />Ver em PDF</a>
-            <a className="btn btn-block" href={signatures.fileUrl(r.id, 'docx')}><Download />Baixar DOCX</a>
-            {r.status === 'completed' && r.verificationCode && <button className="btn btn-block" onClick={() => navigate(`/verificar/${r.verificationCode}`)}><ShieldCheck />Comprovante de verificação</button>}
+            {doc.kind !== 'minutes' && <a className="btn btn-block" href={signatures.fileUrl(r.id, 'docx')}><Download />Baixar DOCX</a>}
+            {doc.kind === 'minutes' && <a className="btn btn-block" href={`/verificar-documento/${doc.publicCode}`} target="_blank" rel="noreferrer"><ShieldCheck />Verificação de autenticidade</a>}
+            {doc.kind !== 'minutes' && r.status === 'completed' && r.verificationCode && <button className="btn btn-block" onClick={() => navigate(`/verificar/${r.verificationCode}`)}><ShieldCheck />Comprovante de verificação</button>}
           </div>
         </div>
       </aside>

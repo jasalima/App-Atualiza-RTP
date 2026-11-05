@@ -2,6 +2,7 @@
 
 import { neon } from './neon';
 import { requestJson } from './request-json';
+import type { MinuteDraft, MinuteListItem, MinuteView, ParticipantCandidate, DocumentVerification, FileVerification } from './types';
 import type { Execution, ImportResult, ManagedUser, PlanItem, Project, Report, ReportContent, Role, Scholar, ScholarOverview, TravelReport, TravelPhoto, ProjectDocument, DocumentDetail, DeliveryStatus, MySignature, SignatureRequest, SignerCandidate, SigningView, VerifyResult, User, Validation, WorkPlan } from './types';
 
 const db = neon as any;
@@ -222,7 +223,7 @@ export const signatures = {
   sign: (id: string, cpf: string) => route<{ completed: boolean; verificationCode: string | null; signatureHash: string }>(`/signatures/${id}/sign`, { method: 'POST', body: JSON.stringify({ cpf, accept: true }) }),
   reject: (id: string, reason: string) => route(`/signatures/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   cancel: (id: string, reason: string) => route(`/signatures/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
-  notify: (id: string, phone?: string) => route<{ sent: boolean; to: string }>(`/signatures/${id}/notify`, { method: 'POST', body: JSON.stringify(phone ? { phone } : {}) }),
+  notify: (id: string, phone?: string, signerId?: string) => route<{ sent: boolean; to: string }>(`/signatures/${id}/notify`, { method: 'POST', body: JSON.stringify({ ...(phone ? { phone } : {}), ...(signerId ? { signerId } : {}) }) }),
   fileUrl: (id: string, format: 'pdf' | 'docx') => `/api/signatures/${id}/file?format=${format}`,
   verify: (code: string) => route<VerifyResult>(`/signatures/verify/${encodeURIComponent(code)}`)
 };
@@ -249,4 +250,28 @@ export const photos = {
     if (!put.ok) throw new Error('A foto não pôde ser enviada ao armazenamento. Tente novamente.');
     return route<{ photos: TravelPhoto[] }>(endpoint, { method: 'POST', body: JSON.stringify({ action: 'register', key: ticket.key, name: file.name.slice(0, 160), caption, width, height, size: blob.size }) });
   }
+};
+
+// Atas de reunião: editor, issued versions and simultaneous signatures (server routes only).
+export const minutes = {
+  list: (projectId: string) => route<MinuteListItem[]>(`/minutes?projectId=${projectId}`),
+  create: (projectId: string) => route<{ id: string; number: string }>('/minutes', { method: 'POST', body: JSON.stringify({ projectId }) }),
+  get: (id: string) => route<MinuteView>(`/minutes/${id}`),
+  save: (id: string, draft: MinuteDraft) => route<{ saved: boolean; savedAt: string }>(`/minutes/${id}`, { method: 'PUT', body: JSON.stringify(draft) }),
+  participants: (projectId: string) => route<ParticipantCandidate[]>(`/minutes/participants?projectId=${projectId}`),
+  finalize: (id: string) => route<{ version: number; publicCode: string }>(`/minutes/${id}/finalize`, { method: 'POST' }),
+  reopen: (id: string, reason = '') => route(`/minutes/${id}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  send: (id: string) => route<{ requestId: string; signers: number; link: string }>(`/minutes/${id}/send`, { method: 'POST' }),
+  status: (id: string, action: 'archive' | 'unarchive' | 'cancel' | 'delete', reason = '') => route(`/minutes/${id}/status`, { method: 'POST', body: JSON.stringify({ action, reason }) }),
+  pdfUrl: (id: string, download = false) => `/api/minutes/${id}/pdf${download ? '?download=1' : ''}`,
+  /** Uploads an image (re-encoded as JPEG) or an annex; returns the stored key and the address used in the text. */
+  upload: async (id: string, file: File, asImage: boolean) => {
+    const body: Blob = asImage ? (await toJpeg(file)).blob : file, type = asImage ? 'image/jpeg' : file.type;
+    const ticket = await route<{ key: string; url: string; src: string }>(`/minutes/${id}/files`, { method: 'POST', body: JSON.stringify({ contentType: type, size: body.size }) });
+    const put = await fetch(ticket.url, { method: 'PUT', body, headers: { 'Content-Type': type } });
+    if (!put.ok) throw new Error('O arquivo não pôde ser enviado ao armazenamento. Tente novamente.');
+    return { key: ticket.key, src: ticket.src, size: body.size, mime: type };
+  },
+  verify: (code: string) => route<DocumentVerification>(`/public/verify-document/${encodeURIComponent(code)}`),
+  verifyFile: (file: File) => { const form = new FormData(); form.append('file', file); return route<FileVerification>('/public/verify-document', { method: 'POST', body: form }); }
 };

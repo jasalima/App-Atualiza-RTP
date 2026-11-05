@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Activity, BookOpen, FileSignature, FileText, FolderKanban, LayoutGrid, Link2, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
+import { Activity, BookOpen, ClipboardList, FileSignature, FileText, FolderKanban, LayoutGrid, Link2, LogOut, Menu, MoreHorizontal, Settings, Sparkles, Users } from 'lucide-react';
 import { neon, prepareDataApi, resetDataApiToken } from './neon';
 import { projects as projectsApi, users } from './api';
 import type { Project, Role, User } from './types';
@@ -21,12 +21,15 @@ import TravelReportEditor from './screens/TravelReportEditor';
 import Connectivity from './screens/Connectivity';
 import Documents from './screens/Documents';
 import { MySignatures, SignPage, SignerShell, VerifyPage } from './screens/Signatures';
+import { MinuteEditor, MinutesList } from './screens/Minutes';
+import VerifyDocumentPage from './screens/VerifyDocument';
 import './connectivity.css';
+import './minutes.css';
 import { InstallAppButton } from './pwa';
 
 function App() {
   // Signature verification is public: anyone holding a signed document can check it.
-  if (useLocation().pathname.startsWith('/verificar')) return <ToastProvider><Routes><Route path="/verificar" element={<VerifyPage />} /><Route path="/verificar/:code" element={<VerifyPage />} /></Routes></ToastProvider>;
+  if (useLocation().pathname.startsWith('/verificar')) return <ToastProvider><Routes><Route path="/verificar" element={<VerifyPage />} /><Route path="/verificar/:code" element={<VerifyPage />} /><Route path="/verificar-documento" element={<VerifyDocumentPage />} /><Route path="/verificar-documento/:code" element={<VerifyDocumentPage />} /></Routes></ToastProvider>;
   return <Authenticated />;
 }
 
@@ -154,7 +157,7 @@ const tabsScholar: Tab[] = [['/', 'Início', LayoutGrid], ['/executions', 'Execu
 
 const groups = [
   { label: 'Preparar', items: [['/projects', 'Projetos', FolderKanban], ['/scholars', 'Bolsistas', Users], ['/plans', 'Planos de Trabalho', BookOpen]] },
-  { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity]] },
+  { label: 'Acompanhar', items: [['/executions', 'Execução das atividades', Activity], ['/atas', 'Atas de Reunião', ClipboardList]] },
   { label: 'Relatar', items: [['/generate', 'Gerar RTP', Sparkles], ['/reports', 'Relatórios', FileText]] },
   { label: 'Prestação de contas', items: [['/travel', 'Diárias e passagens', FileText]] },
   { label: 'Compartilhar', items: [['/documents', 'Documentos', FileText], ['/assinaturas', 'Minhas assinaturas', FileSignature], ['/connectivity', 'Conectividade', Link2]] }
@@ -216,6 +219,8 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
               <Route path="/travel" element={<TravelAccountability />} />
               <Route path="/travel/:id" element={<TravelReportEditor />} />
               <Route path="/documents" element={<Documents />} />
+              <Route path="/atas" element={<MinutesList />} />
+              <Route path="/atas/:id" element={<MinuteEditor />} />
               <Route path="/connectivity" element={<Connectivity />} />
               <Route path="/assinaturas" element={<MySignatures />} />
               <Route path="/assinar/:id" element={<SignPage />} />
