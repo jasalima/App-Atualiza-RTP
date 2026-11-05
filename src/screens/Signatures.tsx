@@ -73,7 +73,7 @@ export function SignaturePanel({ kind, sourceId, scholarId, dirty, onLock }: { k
         <Steps signers={current.signers} />
         {current.status === 'pending' && <div style={{ display: 'grid', gap: 8 }}>
           <button className="btn btn-block" onClick={() => void copy(current.link)}><Copy />Copiar link de assinatura</button>
-          {canManage && <button className="btn btn-block" disabled={busy} onClick={() => notify(current)}><Send />Enviar link pelo WhatsApp</button>}
+          {canManage && <button className="btn btn-block" disabled={busy} onClick={() => notify(current)}><Send />Reenviar link pelo WhatsApp</button>}
           <NavLink className="btn btn-block" to={`/assinar/${current.id}`}><ExternalLink />Abrir página de assinatura</NavLink>
         </div>}
         {current.status === 'completed' && <div style={{ display: 'grid', gap: 8 }}>
@@ -119,12 +119,20 @@ function RequestDrawer({ projectId, kind, sourceId, scholarId, isAdmin, onClose,
       setCredential({ email: member.email, password: res.temporaryPassword }); await load();
     } catch (e) { toast(errorText(e), 'crit'); } finally { setBusy(false); }
   }
-  async function submit(e: FormEvent) {
-    e.preventDefault(); setBusy(true);
-    try { const res = await signatures.create({ projectId, kind, sourceId, signers: order.filter(Boolean) }); toast('Solicitação criada e link copiado.'); onDone(res.link); }
-    catch (x) { toast(errorText(x), 'crit'); } finally { setBusy(false); }
+  const [mode, setMode] = useState<'send' | 'copy' | null>(null);
+  async function submit(e: { preventDefault(): void }, send = true) {
+    e.preventDefault(); setBusy(true); setMode(send ? 'send' : 'copy');
+    try {
+      const res = await signatures.create({ projectId, kind, sourceId, signers: order.filter(Boolean), send });
+      const d = res.delivery;
+      if (!send) toast('Solicitação criada e link copiado.');
+      else if (d?.sent) toast(`Mensagem com o link enviada pelo WhatsApp para ${d.to}. O link também foi copiado.`);
+      else toast(`Solicitação criada, mas a mensagem não saiu: ${d?.reason ?? 'envio indisponível'}. O link foi copiado para enviar manualmente.`, 'crit');
+      onDone(res.link);
+    }
+    catch (x) { toast(errorText(x), 'crit'); } finally { setBusy(false); setMode(null); }
   }
-  const chosen = order.filter(Boolean);
+  const chosen = order.filter(Boolean), invalid = chosen.length < 1 || new Set(chosen).size !== chosen.length;
   return <Drawer open onClose={() => !busy && onClose()} title="Solicitar assinaturas" description="As pessoas assinam na ordem abaixo. Cada uma recebe a vez depois da anterior.">
     {error ? <Notice tone="crit">{error}</Notice> : !candidates ? <Skeleton /> : <form className="stack" onSubmit={submit}>
       {!memberHasAccount && <Notice tone="warn" title="O membro ainda não tem acesso ao sistema">
@@ -138,7 +146,12 @@ function RequestDrawer({ projectId, kind, sourceId, scholarId, isAdmin, onClose,
           {candidates.map((c) => <option key={c.authUserId} value={c.authUserId} disabled={order.includes(c.authUserId) && value !== c.authUserId}>{c.name}{c.roleLabel ? ` — ${c.roleLabel}` : ''}{c.pendingFirstAccess ? ' (primeiro acesso pendente)' : ''}</option>)}
         </select></label>)}
       {order.length < 4 && <div><button type="button" className="btn btn-sm" onClick={() => setOrder([...order, ''])}>Adicionar signatário</button></div>}
-      <div className="form-foot"><button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>Cancelar</button><button className="btn btn-primary" disabled={busy || chosen.length < 1 || new Set(chosen).size !== chosen.length}>{busy ? 'Criando…' : 'Criar e copiar link'}</button></div>
+      <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ao enviar, o 1º signatário recebe no WhatsApp, pelo seu número conectado, o documento em PDF e o link. Antes de assinar, ele pode corrigir ou completar o relatório na página de assinatura; depois da primeira assinatura o conteúdo fica bloqueado.</p>
+      <div className="form-foot" style={{ flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button type="button" className="btn" disabled={busy || invalid} onClick={(e) => void submit(e, false)}><Copy />{mode === 'copy' ? 'Criando…' : 'Só copiar o link'}</button>
+        <button className="btn btn-primary" disabled={busy || invalid}><Send />{mode === 'send' ? 'Enviando…' : 'Criar e enviar pelo WhatsApp'}</button>
+      </div>
     </form>}
   </Drawer>;
 }

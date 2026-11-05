@@ -1,10 +1,9 @@
-import { after } from 'next/server';
 import { z } from 'zod';
 import { requireProject, requireUser } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { documentSource, reclaimSignerSlots, signLink, signerCandidates, type SignerRow } from '@/lib/signatures';
 import { requestView } from '@/lib/signature-view';
-import { dispatchAfterSignature } from '@/lib/signature-dispatch';
+import { dispatchAfterSignature, type Delivery } from '@/lib/signature-dispatch';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 
@@ -34,7 +33,7 @@ export async function GET(request: Request) {
   } catch (error) { return travelError(error); }
 }
 
-const createInput = z.object({ projectId: z.string().uuid(), kind: z.enum(['travel', 'rtp']), sourceId: z.string().uuid(), signers: z.array(z.string().min(1)).min(1).max(4) });
+const createInput = z.object({ projectId: z.string().uuid(), kind: z.enum(['travel', 'rtp']), sourceId: z.string().uuid(), signers: z.array(z.string().min(1)).min(1).max(4), send: z.boolean().default(true) });
 // The team opens a request: signers sign in the given order (member first, then coordination).
 export async function POST(request: Request) {
   try {
@@ -57,8 +56,16 @@ export async function POST(request: Request) {
       if ((error as { code?: string }).code === '23505') throw Object.assign(new Error('Este documento já tem uma solicitação de assinatura em andamento.'), { status: 409 });
       throw error;
     }
-    // The first signer (usually the beneficiary) receives the document and the link right away.
-    after(() => dispatchAfterSignature(id).catch((error) => console.error('signature dispatch', id, error)));
-    return Response.json({ id, link: signLink(id) }, { status: 201 });
+    // "Criar e enviar": the first signer (usually the beneficiary) receives the document and the
+    // link on WhatsApp now, and the team sees whether it went out. "Só copiar o link": no message.
+    let delivery: Delivery | null = null;
+    if (input.send) {
+      try { delivery = await dispatchAfterSignature(id) || null; }
+      catch (error) {
+        console.error('signature dispatch', id, error);
+        delivery = { sent: false, reason: `Falha no envio pelo WhatsApp: ${(error as Error).message}`.slice(0, 300) };
+      }
+    }
+    return Response.json({ id, link: signLink(id), delivery }, { status: 201 });
   } catch (error) { return travelError(error); }
 }

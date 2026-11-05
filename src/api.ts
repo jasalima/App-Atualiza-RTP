@@ -219,7 +219,7 @@ export const signatures = {
   mine: () => route<MySignature[]>('/signatures?mine=1'),
   forSource: (projectId: string, kind: 'travel' | 'rtp', sourceId: string) => route<SignatureRequest[]>(`/signatures?projectId=${projectId}&kind=${kind}&sourceId=${sourceId}`),
   candidates: (projectId: string) => route<SignerCandidate[]>(`/signatures/candidates?projectId=${projectId}`),
-  create: (body: { projectId: string; kind: 'travel' | 'rtp'; sourceId: string; signers: string[] }) => route<{ id: string; link: string }>('/signatures', { method: 'POST', body: JSON.stringify(body) }),
+  create: (body: { projectId: string; kind: 'travel' | 'rtp'; sourceId: string; signers: string[]; send?: boolean }) => route<{ id: string; link: string; delivery: { sent: boolean; to?: string; reason?: string } | null }>('/signatures', { method: 'POST', body: JSON.stringify(body) }),
   get: (id: string) => route<SigningView>(`/signatures/${id}`),
   saveDocument: (id: string, body: unknown) => route<unknown>(`/signatures/${id}/document`, { method: 'PUT', body: JSON.stringify(body) }),
   sign: (id: string, cpf: string, documentHash: string) => route<{ completed: boolean; verificationCode: string | null; signatureHash: string }>(`/signatures/${id}/sign`, { method: 'POST', body: JSON.stringify({ cpf, accept: true, documentHash }) }),

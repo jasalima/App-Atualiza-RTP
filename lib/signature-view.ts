@@ -46,6 +46,8 @@ export function signatureMessage(o: { name: string; label: string; link: string;
     RULE,
     ...(o.signers?.length ? [stagesText(o.signers, { completed: false, currentStep: o.currentStep, parallel: o.parallel }), RULE] : []),
     '',
+    // Before the first signature the person whose turn it is may still correct the document.
+    ...(!o.parallel && !signedBy.length ? ['✏️ Antes de assinar, você pode corrigir ou completar o documento na própria página, em *Alterar ou inserir informações*.', ''] : []),
     `👉 *Leia, ajuste se necessário e assine sem baixar nada:*\n${o.link}`,
     '',
     o.firstAccess ? '🔐 Entre com o seu e-mail e a senha temporária enviada pela coordenação. No primeiro acesso você criará a sua senha definitiva.' : '🔐 Entre com o seu e-mail e a sua senha do RTP Inteligente.',

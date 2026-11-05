@@ -58,6 +58,19 @@ describe('after each signature', () => {
     expect(caption).toContain('⏳ 2. Francisco Gilson Rebouças Porto Junior — Coordenação');
     expect(caption).toContain('⏳ 3. PDF assinado enviado à administração');
   });
+  it('tells the team the message went out and invites the beneficiary to correct before signing', async () => {
+    mocks.load.mockResolvedValue({ request: { ...request('pending'), created_by: 'coord' }, signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'pending'), signer(2, 'coord', 'Francisco Gilson Rebouças Porto Junior', 'waiting')] });
+    expect(await dispatchAfterSignature('req')).toEqual({ sent: true, to: '•••• 1162' });
+    expect(mocks.send.mock.calls[0][4]).toContain('Antes de assinar, você pode corrigir ou completar o documento');
+  });
+  it('explains why the message did not go out', async () => {
+    mocks.load.mockResolvedValue({ request: { ...request('pending'), created_by: 'coord' }, signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'pending'), signer(2, 'coord', 'Francisco Gilson Rebouças Porto Junior', 'waiting')] });
+    mocks.state.mockResolvedValue('close');
+    const res = await dispatchAfterSignature('req');
+    expect(res).toMatchObject({ sent: false });
+    expect((res as { reason: string }).reason).toMatch(/desconectado/);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
   it('does not message whoever opened the request when it is their own turn', async () => {
     mocks.load.mockResolvedValue({ request: request('pending'), signers: [signer(1, 'admin', 'Jaasiel Nascimento Lima', 'pending'), signer(2, 'coord', 'Francisco', 'waiting')] });
     await dispatchAfterSignature('req');

@@ -20,7 +20,8 @@ async function log(projectId: string, userId: string, requestId: string, action:
   await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${userId},${projectId}::uuid,${action},'signature_request',${requestId},${JSON.stringify(metadata)}::jsonb)`;
 }
 
-export async function dispatchAfterSignature(requestId: string, event: 'created' | 'signed' = 'signed') {
+export type Delivery = { sent: boolean; to?: string; reason?: string };
+export async function dispatchAfterSignature(requestId: string, event: 'created' | 'signed' = 'signed'): Promise<Delivery | void> {
   const { request, signers } = await loadRequest(requestId);
   if (request.mode === 'parallel') return dispatchParallel(request, signers, event);
   const projectId = String(request.project_id), creator = String(request.created_by);
@@ -45,21 +46,24 @@ export async function dispatchAfterSignature(requestId: string, event: 'created'
 
   const next = signers.find((s) => s.status === 'pending');
   const target = completed ? owner : next ? people.find((p) => p.authUserId === next.auth_user_id) : undefined;
-  if (!target) return;
+  if (!target) return { sent: false, reason: 'Não há quem deva receber o link agora.' };
+  const skip = async (reason: string): Promise<Delivery> => { await log(projectId, creator, requestId, 'dispatch_skipped', { reason }); return { sent: false, reason }; };
   // Whoever opened the request and signs next is already in the app: no message to themselves.
-  if (!completed && target.authUserId === creator) return;
-  if (!target.phone) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Destinatário sem telefone cadastrado.' });
+  if (!completed && target.authUserId === creator) return { sent: false, reason: 'Você é quem assina agora: abra a página de assinatura.' };
+  if (!target.phone) return skip(`${target.name} não tem telefone cadastrado.`);
   const connection = await ownWhatsApp(projectId, creator);
-  if (!connection) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Quem abriu a solicitação não conectou o WhatsApp.' });
+  if (!connection) return skip('Quem abriu a solicitação não conectou o WhatsApp (seção Conectividade).');
   const provider = await evolutionForProject(projectId);
-  if (await provider.state(connection.instance, connection.token) !== 'open') return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'WhatsApp de quem abriu a solicitação está desconectado.' });
+  if (await provider.state(connection.instance, connection.token) !== 'open') return skip('O WhatsApp de quem abriu a solicitação está desconectado. Abra Conectividade e escaneie o QR Code.');
 
   const caption = completed
     ? completedMessage({ name: target.name, label: source.label, code: String(request.verification_code), verifyUrl: verifyLink(String(request.verification_code)), signers })
     : signatureMessage({ name: next!.name, label: source.label, link: signLink(requestId), firstAccess: target.pendingFirstAccess, from, signers, currentStep: next!.step });
   const file = { ...pdf, filename: completed ? pdf.filename.replace(/\.pdf$/, '-assinado.pdf') : pdf.filename };
   const result = await provider.sendDocument(connection.instance, connection.token, file, digits(target.phone), caption);
-  await log(projectId, creator, requestId, completed ? 'send_signed' : 'notify_signer', { to: `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });
+  const to = `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`;
+  await log(projectId, creator, requestId, completed ? 'send_signed' : 'notify_signer', { to, messageId: result.messageId });
+  return { sent: true, to };
 }
 
 /* Atas (mode 'parallel') ------------------------------------------------------------------------ */

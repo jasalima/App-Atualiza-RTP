@@ -535,7 +535,7 @@ O membro e a coordenação precisam ter contas e contatos corretos no sistema. A
 
 4. Se o membro não tiver conta, peça à administração para criar um acesso Somente assinatura. Quando disponível para a administração, use Criar acesso de assinatura e encaminhe a senha temporária individualmente.
 
-5. Clique em Criar e copiar link. O sistema cria a solicitação e disponibiliza o link. Confira a mensagem e o estado do envio.
+5. Clique em Criar e enviar pelo WhatsApp. O sistema cria a solicitação, envia ao 1º signatário o PDF e o link pelo seu WhatsApp conectado e mostra se a mensagem saiu (ou o motivo, se não saiu). Antes de assinar, o signatário pode corrigir ou completar o relatório em "Alterar ou inserir informações". Se preferir enviar por outro meio, use Só copiar o link.
 
 6. Acompanhe a Ordem de assinatura. O membro assina primeiro; a próxima pessoa recebe a vez após a anterior. Os avisos automáticos acompanham a evolução da solicitação.
 
