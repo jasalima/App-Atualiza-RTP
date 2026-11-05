@@ -1,8 +1,9 @@
 import { after } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
-import { clientIp, documentSource, normalizeCpf, requestAccess, sha256 } from '@/lib/signatures';
+import { clientIp, documentSource, normalizeCpf, requestAccess, sha256, type SignatureKind } from '@/lib/signatures';
 import { dispatchAfterSignature } from '@/lib/signature-dispatch';
+import { recordParallelSignature } from '@/lib/parallel-sign';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 
@@ -18,13 +19,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params, body = input.parse(await request.json());
     const access = await requestAccess(id), r = access.request, me = access.me;
     if (r.status !== 'pending') throw fail('Esta solicitação de assinatura já foi encerrada.', 409);
-    if (!me || access.current?.id !== me.id) throw fail(me?.status === 'signed' ? 'Você já assinou este documento.' : 'Aguarde a sua vez: o documento segue a ordem de assinatura.', 409);
+    // Atas (mode 'parallel'): every signer may sign at any time, in any order.
+    const parallel = r.mode === 'parallel';
+    if (!me || (parallel ? me.status !== 'pending' : access.current?.id !== me.id)) throw fail(me?.status === 'signed' ? 'Você já assinou este documento.' : 'Aguarde a sua vez: o documento segue a ordem de assinatura.', 409);
     const cpf = normalizeCpf(body.cpf);
     if (!cpf) throw fail('CPF inválido. Confira os números.', 400);
     const [profile] = await sql`SELECT cpf FROM signer_profiles WHERE auth_user_id=${access.user.id}`;
     if (profile && profile.cpf !== cpf) throw fail('Este CPF não corresponde ao usado nas suas assinaturas anteriores. Procure a coordenação se precisar corrigi-lo.', 409);
 
-    const source = await documentSource(String(r.project_id), r.source_kind as 'travel' | 'rtp', String(r.source_id));
+    const source = await documentSource(String(r.project_id), r.source_kind as SignatureKind, String(r.source_id));
+    if (r.document_hash && r.document_hash !== source.hash) throw fail('O documento não corresponde à versão enviada para assinatura.', 409);
     const previous = access.signers.filter((s) => s.status === 'signed');
     if (previous.some((s) => s.document_hash !== source.hash)) throw fail('O documento foi alterado depois da primeira assinatura. A coordenação precisa cancelar e solicitar novamente.', 409);
 
@@ -35,6 +39,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const code = finalHash.slice(0, 12).toUpperCase().replace(/(.{4})(?=.)/g, '$1-');
     // Every follow-up statement runs only if this signer's row really changed to signed (no double signing).
     const mine = sql`EXISTS(SELECT 1 FROM signature_signers WHERE id=${me.id}::uuid AND status='signed' AND signature_hash=${signatureHash})`;
+    if (parallel) {
+      const result = await recordParallelSignature({ requestId: id, signerId: me.id, userId: access.user.id, projectId: String(r.project_id), step: me.step, cpf, signedAt, ip, userAgent, documentHash: source.hash, signatureHash });
+      if (!result.recorded) throw fail('Assinatura já registrada ou solicitação alterada. Atualize a página.', 409);
+      after(() => dispatchAfterSignature(id, 'signed').catch((error) => console.error('signature dispatch', id, error)));
+      return Response.json({ signed: true, signedAt, signatureHash, documentHash: source.hash, completed: result.completed, verificationCode: null });
+    }
     const [updated] = await sql.transaction([
       sql`UPDATE signature_signers SET status='signed',cpf=${cpf},signed_at=${signedAt}::timestamptz,ip=${ip},user_agent=${userAgent},document_hash=${source.hash},signature_hash=${signatureHash}
         WHERE id=${me.id}::uuid AND status='pending' RETURNING id`,

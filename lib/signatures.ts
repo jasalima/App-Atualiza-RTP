@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';
+import { APP_URL, sha256, stableJson } from './hash';
+import { minuteSource, officialPdf } from './minutes-core';
 import { requireUser } from './authorize';
 import { sql } from './db';
 import { readPrivateObject } from './storage';
@@ -9,8 +10,8 @@ import type { ReportContent } from '../server/types';
 import { toDocx, toPdf } from '../server/services/export';
 import { travelFile } from './travel';
 
-export type SignatureKind = 'travel' | 'rtp';
-export const APP_URL = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'https://atualizaprojeto.vercel.app');
+export type SignatureKind = 'travel' | 'rtp' | 'minutes';
+export { APP_URL, sha256, stableJson };
 export const signLink = (id: string) => `${APP_URL}/assinar/${id}`;
 export const verifyLink = (code: string) => `${APP_URL}/verificar/${code}`;
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status });
@@ -22,18 +23,16 @@ export function normalizeCpf(value: string) {
   const check = (len: number) => { let sum = 0; for (let i = 0; i < len; i++) sum += Number(d[i]) * (len + 1 - i); const r = (sum * 10) % 11; return r === 10 ? 0 : r; };
   return check(9) === Number(d[9]) && check(10) === Number(d[10]) ? d : null;
 }
-/** JSON with sorted keys, so the same content always yields the same hash. */
-export function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.keys(value as object).sort().map((k) => `${JSON.stringify(k)}:${stableJson((value as Record<string, unknown>)[k])}`).join(',')}}`;
-  return JSON.stringify(value ?? null);
-}
-export const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 /** Client IP as seen by the Vercel edge (first hop of x-forwarded-for). */
 export const clientIp = (request: Request) => (request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || '').trim().slice(0, 64);
 
 /** What is signed: the document's content at this moment, with a label and the member it belongs to. */
 export async function documentSource(projectId: string, kind: SignatureKind, sourceId: string) {
+  // Atas: the frozen version (sourceId is the version id); its hash was fixed when it was issued.
+  if (kind === 'minutes') {
+    const m = await minuteSource(projectId, sourceId);
+    return { kind, sourceId, projectId, scholarId: null as string | null, version: m.version.version as number | null, label: m.label, content: m.version.content as unknown, hash: m.hash, minutes: m.version };
+  }
   if (kind === 'travel') {
     const report = await travelReportById(projectId, sourceId);
     const beneficiary = await beneficiaryOf(projectId, report.scholarId);
@@ -71,7 +70,8 @@ export async function requestAccess(id: string) {
   const current = loaded.signers.find((s) => s.status === 'pending') ?? null;
   const anySigned = loaded.signers.some((s) => s.status === 'signed');
   // Content may change only before the first signature: afterwards every signer signs the same hash.
-  const canEdit = loaded.request.status === 'pending' && !anySigned && (manager || (!!me && current?.id === me.id));
+  // Atas are edited in their own editor before being frozen: never through the signing link.
+  const canEdit = loaded.request.mode !== 'parallel' && loaded.request.status === 'pending' && !anySigned && (manager || (!!me && current?.id === me.id));
   return { user, ...loaded, me, manager, current, anySigned, canEdit };
 }
 
@@ -128,6 +128,10 @@ export async function signerCandidates(projectId: string) {
 
 /** The document as a file, with the signatures collected so far. */
 export async function signedFile(source: Awaited<ReturnType<typeof documentSource>>, format: 'pdf' | 'docx') {
+  if (source.minutes) {
+    if (format !== 'pdf') throw fail('Atas de reunião são emitidas em PDF.', 400);
+    return officialPdf(source.sourceId);
+  }
   if (source.travel) return travelFile(source.travel.beneficiary, format, await fullTravelFill(source.travel.report));
   const signatures = await signatureManifest('rtp', source.sourceId);
   return { buffer: await (format === 'pdf' ? toPdf(source.rtp!.content, signatures) : toDocx(source.rtp!.content, signatures)), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: `RTP-${source.rtp!.number.replace(/[^a-z0-9-]/gi, '_')}.${format}` };

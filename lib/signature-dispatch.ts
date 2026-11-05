@@ -4,6 +4,7 @@ import { sql } from './db';
 import { documentSource, loadRequest, signedFile, signerCandidates, signLink, verifyLink } from './signatures';
 import { completedMessage, signatureMessage } from './signature-view';
 import { putPrivateObject } from './storage';
+import { minuteVerifyLink } from './minutes-core';
 import { ownWhatsApp } from './whatsapp-connections';
 
 // What happens after each signature, without making the signer wait:
@@ -18,8 +19,9 @@ async function log(projectId: string, userId: string, requestId: string, action:
   await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${userId},${projectId}::uuid,${action},'signature_request',${requestId},${JSON.stringify(metadata)}::jsonb)`;
 }
 
-export async function dispatchAfterSignature(requestId: string) {
+export async function dispatchAfterSignature(requestId: string, event: 'created' | 'signed' = 'signed') {
   const { request, signers } = await loadRequest(requestId);
+  if (request.mode === 'parallel') return dispatchParallel(request, signers, event);
   const projectId = String(request.project_id), creator = String(request.created_by);
   const source = await documentSource(projectId, request.source_kind as 'travel' | 'rtp', String(request.source_id));
   const people = await signerCandidates(projectId), owner = people.find((p) => p.authUserId === creator);
@@ -57,4 +59,46 @@ export async function dispatchAfterSignature(requestId: string) {
   const file = { ...pdf, filename: completed ? pdf.filename.replace(/\.pdf$/, '-assinado.pdf') : pdf.filename };
   const result = await provider.sendDocument(connection.instance, connection.token, file, digits(target.phone), caption);
   await log(projectId, creator, requestId, completed ? 'send_signed' : 'notify_signer', { to: `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });
+}
+
+/* Atas (mode 'parallel') ------------------------------------------------------------------------ */
+type Loaded = Awaited<ReturnType<typeof loadRequest>>;
+// Every participant receives the ata at once, through the WhatsApp of whoever opened the request.
+// Each signature refreshes the official PDF (kept for file verification); the last one archives
+// the signed ata in Documents and sends it to whoever opened the request.
+async function dispatchParallel(request: Loaded['request'], signers: Loaded['signers'], event: 'created' | 'signed') {
+  const requestId = String(request.id), projectId = String(request.project_id), creator = String(request.created_by), completed = request.status === 'completed';
+  const source = await documentSource(projectId, 'minutes', String(request.source_id));
+  const pdf = await signedFile(source, 'pdf');
+  if (event === 'signed' && !completed) return;
+  const minute = source.minutes!, code = String(minute.public_code);
+  if (completed && !request.archived_document_id) {
+    const key = `${projectId}/minutes/${minute.minute_id}/signed/${requestId}.pdf`, sha256 = createHash('sha256').update(pdf.buffer).digest('hex');
+    await putPrivateObject(key, pdf.buffer, 'application/pdf');
+    const [doc] = await sql`INSERT INTO documents(project_id,scholar_id,kind,category,title,description,original_name,mime_type,size_bytes,storage_key,sha256,extraction_status,created_by,version)
+      VALUES(${projectId}::uuid,NULL,'project_document','minutes',${`${source.label} — assinada`},${`Assinada eletronicamente por ${signers.map((s) => s.name).join(', ')}. Código de verificação ${code}.`},
+        ${pdf.filename},'application/pdf',${pdf.buffer.length},${key},${sha256},'not_applicable',${creator},1)
+      ON CONFLICT (storage_key) DO UPDATE SET updated_at=now() RETURNING id`;
+    await sql`UPDATE signature_requests SET archived_document_id=${doc.id}::uuid WHERE id=${requestId}::uuid`;
+    await log(projectId, creator, requestId, 'archive_signed', { documentId: String(doc.id) });
+  }
+  const people = await signerCandidates(projectId), owner = people.find((p) => p.authUserId === creator);
+  const targets = completed ? (owner ? [{ person: owner, signer: null }] : [])
+    : signers.filter((s) => s.status === 'pending' && s.auth_user_id !== creator).map((s) => ({ person: people.find((p) => p.authUserId === s.auth_user_id), signer: s }));
+  if (!targets.length) return;
+  const connection = await ownWhatsApp(projectId, creator);
+  if (!connection) return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'Quem abriu a solicitação não conectou o WhatsApp.' });
+  const provider = await evolutionForProject(projectId);
+  if (await provider.state(connection.instance, connection.token) !== 'open') return log(projectId, creator, requestId, 'dispatch_skipped', { reason: 'WhatsApp de quem abriu a solicitação está desconectado.' });
+  const from = { name: owner?.name ?? 'Coordenação do projeto', role: owner?.roleLabel ?? '' };
+  for (const { person, signer } of targets) {
+    if (!person?.phone) { await log(projectId, creator, requestId, 'dispatch_skipped', { reason: `${signer?.name ?? person?.name ?? 'Destinatário'} sem telefone cadastrado.` }); continue; }
+    const caption = signer
+      ? signatureMessage({ name: signer.name, label: source.label, link: signLink(requestId), firstAccess: person.pendingFirstAccess, from, signers, currentStep: signer.step, parallel: true })
+      : completedMessage({ name: person.name, label: source.label, code, verifyUrl: minuteVerifyLink(code), signers, parallel: true });
+    try {
+      const result = await provider.sendDocument(connection.instance, connection.token, pdf, digits(person.phone), caption);
+      await log(projectId, creator, requestId, signer ? 'notify_signer' : 'send_signed', { to: `•••• ${person.phone.replace(/\D/g, '').slice(-4)}`, messageId: result.messageId });
+    } catch (error) { await log(projectId, creator, requestId, 'dispatch_skipped', { reason: `Falha no envio para ${person.name}: ${(error as Error).message}`.slice(0, 300) }); }
+  }
 }

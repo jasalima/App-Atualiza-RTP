@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sql } from '@/lib/db';
-import { documentSource, requestAccess } from '@/lib/signatures';
+import { documentSource, requestAccess, type SignatureKind } from '@/lib/signatures';
 import { requestView, signerView } from '@/lib/signature-view';
 import { sameOrigin, travelError } from '@/lib/travel';
 import { withUrls } from '@/lib/travel-photos';
@@ -13,17 +13,19 @@ export async function GET(_request: Request, { params }: Params) {
   try {
     const { id } = await params;
     const access = await requestAccess(id), r = access.request;
-    const source = await documentSource(String(r.project_id), r.source_kind as 'travel' | 'rtp', String(r.source_id));
+    const source = await documentSource(String(r.project_id), r.source_kind as SignatureKind, String(r.source_id));
     const [project] = await sql`SELECT title FROM projects WHERE id=${r.project_id}::uuid`;
     const [profile] = await sql`SELECT cpf FROM signer_profiles WHERE auth_user_id=${access.user.id}`;
-    const document = source.travel
+    const document = source.minutes
+      ? { kind: 'minutes' as const, number: source.minutes.content.number, subject: source.minutes.content.subject, version: source.minutes.version, publicCode: source.minutes.public_code, minuteId: source.minutes.minute_id }
+      : source.travel
       ? { kind: 'travel' as const, beneficiary: source.travel.beneficiary, report: { ...source.travel.report, photos: await withUrls(source.travel.report.photos) } }
       : { kind: 'rtp' as const, number: source.rtp!.number, version: source.version, content: source.rtp!.content };
     return Response.json({
       request: requestView(r, access.signers), projectTitle: String(project?.title ?? ''), documentHash: source.hash, document,
       me: access.me ? { ...signerView(access.me), cpfOnFile: profile ? maskCpf(String(profile.cpf)) : null } : null,
       manager: access.manager, canEdit: access.canEdit,
-      canSign: r.status === 'pending' && !!access.me && access.current?.id === access.me.id
+      canSign: r.status === 'pending' && !!access.me && (r.mode === 'parallel' ? access.me.status === 'pending' : access.current?.id === access.me.id), mode: String(r.mode ?? 'sequential')
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return travelError(error); }
 }

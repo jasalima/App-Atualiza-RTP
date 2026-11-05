@@ -12,7 +12,12 @@ const nextConfig: NextConfig = {
     '/api/travel/reports/*/export': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/travel/send': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/documents/send': ['./node_modules/pdfkit/js/data/**/*'],
-    '/api/signatures/*/file': ['./node_modules/pdfkit/js/data/**/*']
+    '/api/signatures/*/file': ['./node_modules/pdfkit/js/data/**/*'],
+    // Signatures render the signed PDF after each step; atas render their official PDF.
+    '/api/signatures': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/signatures/*/sign': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/minutes/*/pdf': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/minutes/*/send': ['./node_modules/pdfkit/js/data/**/*']
   },
   async headers() {
     return [{
