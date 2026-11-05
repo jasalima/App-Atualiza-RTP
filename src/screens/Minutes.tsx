@@ -114,13 +114,16 @@ export function MinuteEditor() {
   const change = (patch: Partial<MinuteDraft>) => { setDraft((d) => (d ? { ...d, ...patch } : d)); setDirty(true); };
 
   // Autosave two seconds after the last change; one save at a time.
-  const saving$ = useRef(false), latest = useRef(draft);
+  const saving$ = useRef(false), latest = useRef(draft), numberRef = useRef<string | undefined>(undefined);
+  numberRef.current = view?.number;
   latest.current = draft;
   const save = useCallback(async (quiet = false) => {
     if (!latest.current || saving$.current) return false;
     saving$.current = true; setSaving(true);
     const sent = latest.current;
-    try { const r = await minutesApi.save(id!, sent); setSavedAt(r.savedAt); if (latest.current === sent) setDirty(false); if (!quiet) toast('Ata salva.'); return true; }
+    try { const r = await minutesApi.save(id!, sent); setSavedAt(r.savedAt);
+      // First save: the ata receives its number now.
+      if (r.number && numberRef.current !== r.number) { numberRef.current = r.number; setView((v) => (v ? { ...v, number: r.number } : v)); toast(`Ata numerada: ${r.number}.`); } if (latest.current === sent) setDirty(false); if (!quiet) toast('Ata salva.'); return true; }
     catch (e) { toast(errorText(e), 'crit'); return false; }
     finally { saving$.current = false; setSaving(false); }
   }, [id, toast]);

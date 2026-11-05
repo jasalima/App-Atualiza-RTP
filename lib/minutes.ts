@@ -75,20 +75,32 @@ export async function saveDraft(id: string, projectId: string, userId: string, d
       VALUES(${id}::uuid,${i},${p.scholarId}::uuid,${p.authUserId},${p.name},${p.institution},${p.role},${p.email},${p.attendance},${p.signs},${p.cpf},${p.phone})`),
     sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${userId},${projectId}::uuid,'update','meeting_minute',${id})`
   ]);
+  // The first save gives the ata its number.
+  return assignNumber(id, projectId, userId);
 }
 
-/** New ata: next number of the project in the year, header copied from the last ata. */
+const currentYear = () => Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
+/** New ata: a draft without number (it is numbered at the first save), header copied from the last ata. */
 export async function createMinute(projectId: string, userId: string, drafter: string) {
-  const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
   const [last] = await sql`SELECT header,place FROM meeting_minutes WHERE project_id=${projectId}::uuid AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const [row] = await sql`INSERT INTO meeting_minutes(project_id,year,seq,created_by,drafted_by,header,place)
+    VALUES(${projectId}::uuid,${currentYear()},NULL,${userId},${drafter},${JSON.stringify(last?.header ?? DEFAULT_HEADER)}::jsonb,${String(last?.place ?? 'Palmas, TO')}) RETURNING id`;
+  await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${userId},${projectId}::uuid,'create','meeting_minute',${String(row.id)})`;
+  return { id: String(row.id), number: minuteNumber(null, currentYear()) };
+}
+
+/** Gives the ata the next number of the year (only atas not deleted count). No-op when it already has one. */
+export async function assignNumber(id: string, projectId: string, userId: string) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const [row] = await sql`INSERT INTO meeting_minutes(project_id,year,seq,created_by,drafted_by,header,place)
-        SELECT ${projectId}::uuid,${year},coalesce(max(seq),0)+1,${userId},${drafter},${JSON.stringify(last?.header ?? DEFAULT_HEADER)}::jsonb,${String(last?.place ?? 'Palmas, TO')}
-        FROM meeting_minutes WHERE project_id=${projectId}::uuid AND year=${year} RETURNING id,seq,year`;
-      await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${userId},${projectId}::uuid,'create','meeting_minute',${String(row.id)})`;
-      return { id: String(row.id), number: minuteNumber(Number(row.seq), Number(row.year)) };
-    } catch (error) { if ((error as { code?: string }).code !== '23505' || attempt === 2) throw error; }
+      const year = currentYear();
+      const [row] = await sql`UPDATE meeting_minutes SET year=${year},seq=(SELECT coalesce(max(seq),0)+1 FROM meeting_minutes WHERE project_id=${projectId}::uuid AND year=${year} AND deleted_at IS NULL)
+        WHERE id=${id}::uuid AND seq IS NULL RETURNING seq,year`;
+      if (!row) { const [cur] = await sql`SELECT seq,year FROM meeting_minutes WHERE id=${id}::uuid`; return minuteNumber(Number(cur?.seq), Number(cur?.year)); }
+      const number = minuteNumber(Number(row.seq), Number(row.year));
+      await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${userId},${projectId}::uuid,'number_minute','meeting_minute',${id},jsonb_build_object('number',${number}::text))`;
+      return number;
+    } catch (error) { if ((error as { code?: string }).code !== '23505' || attempt === 3) throw error; } // two first saves at once: retry with the next number
   }
   throw fail('Não foi possível numerar a ata. Tente novamente.', 409);
 }
@@ -132,8 +144,10 @@ export async function minuteView(id: string) {
 
 /** Freezes the draft as version N: content, hash and public code never change afterwards. */
 export async function finalizeMinute(id: string) {
-  const access = await minuteAccess(id, true), row = access.row;
-  if (!['draft', 'editing'].includes(String(row.status))) throw fail('Esta ata já foi finalizada.', 409);
+  const first = await minuteAccess(id, true);
+  if (!['draft', 'editing'].includes(String(first.row.status))) throw fail('Esta ata já foi finalizada.', 409);
+  if (!first.row.seq) { await assignNumber(id, String(first.row.project_id), first.session.user.id); }
+  const access = first.row.seq ? first : await minuteAccess(id, true), row = access.row;
   const draft = await draftOf(row);
   const problems = [!draft.subject.trim() && 'o assunto', !draft.meetingDate && 'a data da reunião', !draft.participants.some((p) => p.attendance === 'present') && 'ao menos um participante presente', !draft.topics.length && 'ao menos um tópico'].filter(Boolean);
   if (problems.length) throw fail(`Para finalizar, informe ${problems.join(', ')}.`, 400);
@@ -242,7 +256,7 @@ export async function listMinutes(projectId: string) {
     FROM meeting_minutes m
     LEFT JOIN LATERAL (SELECT id,public_code,version FROM meeting_minute_versions WHERE minute_id=m.id ORDER BY version DESC LIMIT 1) v ON true
     LEFT JOIN LATERAL (SELECT id,status FROM signature_requests WHERE source_kind='minutes' AND source_id=v.id AND status IN ('pending','completed') ORDER BY created_at DESC LIMIT 1) r ON true
-    WHERE m.project_id=${projectId}::uuid AND m.deleted_at IS NULL ORDER BY m.year DESC,m.seq DESC`;
+    WHERE m.project_id=${projectId}::uuid AND m.deleted_at IS NULL ORDER BY (m.seq IS NULL) DESC,m.year DESC,m.seq DESC,m.created_at DESC`;
   return rows.map((r) => {
     const total = Number(r.total ?? 0), signed = Number(r.signed ?? 0);
     return {

@@ -259,7 +259,7 @@ export const minutes = {
   list: (projectId: string) => route<MinuteListItem[]>(`/minutes?projectId=${projectId}`),
   create: (projectId: string) => route<{ id: string; number: string }>('/minutes', { method: 'POST', body: JSON.stringify({ projectId }) }),
   get: (id: string) => route<MinuteView>(`/minutes/${id}`),
-  save: (id: string, draft: MinuteDraft) => route<{ saved: boolean; savedAt: string }>(`/minutes/${id}`, { method: 'PUT', body: JSON.stringify(draft) }),
+  save: (id: string, draft: MinuteDraft) => route<{ saved: boolean; savedAt: string; number: string }>(`/minutes/${id}`, { method: 'PUT', body: JSON.stringify(draft) }),
   participants: (projectId: string) => route<ParticipantCandidate[]>(`/minutes/participants?projectId=${projectId}`),
   finalize: (id: string) => route<{ version: number; publicCode: string }>(`/minutes/${id}/finalize`, { method: 'POST' }),
   reopen: (id: string, reason = '') => route(`/minutes/${id}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),

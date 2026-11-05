@@ -34,7 +34,9 @@ describe('textos automáticos da ata', () => {
   });
   it('numera tópicos e subtópicos automaticamente', () => {
     expect(numberTopics(sampleDraft().topics).map((t) => [t.number, ...t.children.map((c) => c.number)])).toEqual([['1'], ['2', '2.1'], ['3']]);
-    expect(minuteNumber(1, 2026)).toBe('ATA Nº 001/2026');
+    expect(minuteNumber(1, 2026)).toBe('ATA Nº 01/2026');
+    expect(minuteNumber(12, 2026)).toBe('ATA Nº 12/2026');
+    expect(minuteNumber(null, 2026)).toBe('Nova ata (sem número)'); // numbered at the first save
   });
   it('congela o conteúdo sem e-mails e preserva textos editados manualmente', () => {
     const d = sampleDraft(); d.participants[0].email = 'nilson@uft.edu.br';

@@ -43,7 +43,8 @@ export function displayStatus(status: MinuteStatus, request: { status: string; s
   return request.signed > 0 ? 'partial' : 'awaiting';
 }
 
-export const minuteNumber = (seq: number, year: number) => `ATA Nº ${String(seq).padStart(3, '0')}/${year}`;
+/** "ATA Nº 01/2026"; a new ata gets its number at the first save. */
+export const minuteNumber = (seq: number | null | undefined, year: number) => (seq ? `ATA Nº ${String(seq).padStart(2, '0')}/${year}` : 'Nova ata (sem número)');
 
 export const DEFAULT_HEADER: MinuteHeader = {
   lines: ['UNIVERSIDADE FEDERAL DO TOCANTINS – PRÓ-REITORIA DE PESQUISA', 'PLANO DE DESENVOLVIMENTO SUSTENTÁVEL DO POLO DE AGRICULTURA IRRIGADA DO SUDOESTE DO TOCANTINS'],

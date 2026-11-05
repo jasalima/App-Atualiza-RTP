@@ -15,7 +15,7 @@ export async function PUT(request: Request, { params }: Params) {
     const { id } = await params, access = await minuteAccess(id, true);
     if (!['draft', 'editing'].includes(String(access.row.status))) throw Object.assign(new Error('Ata finalizada: reabra a edição para alterá-la.'), { status: 409 });
     const draft = draftInput.parse(await request.json());
-    await saveDraft(id, String(access.row.project_id), access.session.user.id, draft);
-    return Response.json({ saved: true, savedAt: new Date().toISOString() });
+    const number = await saveDraft(id, String(access.row.project_id), access.session.user.id, draft);
+    return Response.json({ saved: true, savedAt: new Date().toISOString(), number });
   } catch (error) { return travelError(error); }
 }
