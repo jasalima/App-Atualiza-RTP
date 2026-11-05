@@ -71,10 +71,11 @@ export function PhotoManager({ endpoint, photos, onChange, locked }: { endpoint:
   }
   return <section className="panel panel-pad">
     <h3 style={{ fontSize: 18, marginBottom: 4 }}>Registro fotográfico</h3>
-    <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Fotos do evento e comprovantes do deslocamento (recibos, notas fiscais, faturas de hotel e restaurantes). Saem na página “REGISTRO FOTOGRÁFICO” do documento, na ordem abaixo.</p>
+    <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Fotos do evento e comprovantes do deslocamento (recibos, notas fiscais, faturas de hotel e restaurantes). Saem na página “REGISTRO FOTOGRÁFICO” do documento, na ordem abaixo, numeradas automaticamente (Imagem 1 - legenda, Imagem 2 - …).</p>
     {photos.length > 0 && <div className="photo-grid">{photos.map((p, i) => <figure key={p.key} className="photo-card">
       {p.url ? <img src={p.url} alt={p.caption || p.name} loading="lazy" /> : <div className="photo-missing" />}
       <figcaption>
+        <b style={{ fontSize: 12.5 }}>Imagem {i + 1}</b>
         <input value={captions[p.key] ?? p.caption} placeholder="Legenda (opcional)" disabled={locked || !!busy} aria-label={`Legenda da foto ${i + 1}`}
           onChange={(e) => setCaptions({ ...captions, [p.key]: e.target.value })}
           onBlur={() => { const c = (captions[p.key] ?? p.caption).trim(); if (c !== p.caption) void change({ action: 'caption', key: p.key, caption: c }); }} />

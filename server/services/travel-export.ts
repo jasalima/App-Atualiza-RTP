@@ -42,7 +42,9 @@ const TITLE = 'FUNDAÇÃO DE APOIO CIENTÍFICO E TECNOLÓGICO DO TOCANTINS';
 const INSTRUCTION = 'Descrever o objetivo da viagem e relatar os resultados, assim como outras informações pertinentes';
 // Last page: left free for the member to paste the trip photos as they prefer.
 export const PHOTO_TITLE = 'REGISTRO FOTOGRÁFICO';
-const SIGN_LINE = (label: string) => '_'.repeat(Math.max(12, 62 - label.length));
+/** Photos are numbered in the order they appear: "Imagem 1 - caption". */
+export const photoCaption = (i: number, caption?: string) => `Imagem ${i + 1}${caption?.trim() ? ` - ${caption.trim()}` : ''}`;
+const SIGN_LINE =(label: string) => '_'.repeat(Math.max(12, 62 - label.length));
 
 // Measurements taken from the FAPTO Form 26 model (A4, Calibri 11, single spacing).
 const FONT = 'Calibri', SIZE = 22, LOGO_PT = 137; // 4,84 cm, as embedded in the official FAPTO forms
@@ -112,12 +114,13 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
           signature('De acordo (Coordenador do projeto):', 2)
         ]
       }),
-      para([{ text: 'Observações:', bold: true }, { text: ` ${TRAVEL_NOTES[0]}` }], { after: 0 }),
-      ...TRAVEL_NOTES.slice(1).map((t) => para(t, { after: 0 })),
+      // Notes right below the table, in a smaller type so they share its page.
+      ...TRAVEL_NOTES.map((t, i) => new Paragraph({ spacing: { before: i ? 0 : 60, after: 0, line: 220 }, keepLines: true,
+        children: [...(i ? [] : [new TextRun({ text: 'Observações: ', bold: true, font: FONT, size: 18 })]), new TextRun({ text: t, font: FONT, size: 18 })] })),
       new Paragraph({ pageBreakBefore: true, alignment: AlignmentType.CENTER, spacing: { before: 0, after: 360 }, children: [new TextRun({ text: PHOTO_TITLE, bold: true, font: FONT, size: SIZE })] }),
-      ...(fill.photos ?? []).flatMap((ph) => [
+      ...(fill.photos ?? []).flatMap((ph, i) => [
         new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 120, after: 60 }, children: [new ImageRun({ type: 'jpg', data: ph.data, transformation: fit(ph.width, ph.height, 520, 330) })] }),
-        para(ph.caption, { center: true, after: 200 })
+        para(photoCaption(i, ph.caption), { center: true, after: 200 })
       ]),
       para(''),
       ...(fill.signatures?.signers.length ? manifestDocx(fill.signatures, { font: FONT, size: SIZE, width: DATE_COL + ACT_COL }) : [])
@@ -189,22 +192,27 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     signRow('Assinatura do beneficiário:', 1);
     signRow('De acordo (Coordenador do projeto):', 2);
 
+    // The notes stay right below the table: they use the footer band of the page and, when
+    // the table is long, a smaller type (down to 7.5 pt) instead of jumping to a page of their own.
     doc.y = y + 4;
-    const notesH = TRAVEL_NOTES.reduce((s, n) => s + font().heightOfString(`Observações: ${n}`, { width: w, lineGap: 1 }), 0);
-    // Signed rows are taller: keep the notes together only when they fit on a fresh page anyway.
-    if (doc.y + notesH > bottom && !fill.signatures?.signers.length) { doc.addPage(); doc.y = 31; }
-    font(true).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: 1 }); font().text(` ${TRAVEL_NOTES[0]}`, { lineGap: 1 });
-    for (const n of TRAVEL_NOTES.slice(1)) font().text(n, x, doc.y, { width: w, lineGap: 1 });
+    const notesBottom = doc.page.height - 24;
+    const notesH = (size: number) => TRAVEL_NOTES.reduce((s, n, i) => s + doc.font('Helvetica').fontSize(size).heightOfString(i ? n : `Observações: ${n}`, { width: w, lineGap: .6 }), 0);
+    const size = [FS, 9.5, 9, 8.5, 8, 7.5].find((s) => doc.y + notesH(s) <= notesBottom) ?? 7.5;
+    const keepMargin = doc.page.margins.bottom; doc.page.margins.bottom = 24;
+    doc.font('Helvetica-Bold').fontSize(size).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: .6 }); doc.font('Helvetica').fontSize(size).text(` ${TRAVEL_NOTES[0]}`, { lineGap: .6 });
+    for (const n of TRAVEL_NOTES.slice(1)) doc.font('Helvetica').fontSize(size).text(n, x, doc.y, { width: w, lineGap: .6 });
+    doc.page.margins.bottom = keepMargin;
 
     doc.addPage(); doc.y = 31;
     font(true).text(PHOTO_TITLE, x, doc.y, { width: w, align: 'center' }); doc.y += 18;
-    for (const ph of fill.photos ?? []) {
-      const size = fit(ph.width, ph.height, w, 250), capH = font().heightOfString(ph.caption || ' ', { width: w });
+    (fill.photos ?? []).forEach((ph, i) => {
+      const caption = photoCaption(i, ph.caption);
+      const size = fit(ph.width, ph.height, w, 250), capH = font().heightOfString(caption, { width: w });
       if (doc.y + size.height + capH + 16 > bottom) { doc.addPage(); doc.y = 31; }
       doc.image(ph.data, x + (w - size.width) / 2, doc.y, size); doc.y += size.height + 4;
-      if (ph.caption) font().text(ph.caption, x, doc.y, { width: w, align: 'center' });
+      font().text(caption, x, doc.y, { width: w, align: 'center' });
       doc.y += 12;
-    }
+    });
     if (fill.signatures?.signers.length) manifestPdf(doc, fill.signatures, { x, width: w, top: 31, regular: 'Helvetica', bold: 'Helvetica-Bold' });
     doc.end();
   });

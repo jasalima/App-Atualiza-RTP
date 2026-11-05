@@ -209,7 +209,7 @@ function Form26Preview({ view }: { view: SigningView & { document: { kind: 'trav
       </tbody>
     </table>
     <h4 className="paper-center">REGISTRO FOTOGRÁFICO</h4>
-    {r.photos?.length ? <div className="paper-photos">{r.photos.map((p) => <figure key={p.key}>{p.url && <img src={p.url} alt={p.caption || p.name} />}{p.caption && <figcaption>{p.caption}</figcaption>}</figure>)}</div> : <p className="muted">Nenhuma foto inserida ainda.</p>}
+    {r.photos?.length ? <div className="paper-photos">{r.photos.map((p, i) => <figure key={p.key}>{p.url && <img src={p.url} alt={p.caption || p.name} />}<figcaption>Imagem {i + 1}{p.caption?.trim() ? ` - ${p.caption.trim()}` : ''}</figcaption></figure>)}</div> : <p className="muted">Nenhuma foto inserida ainda.</p>}
   </article>;
 }
 function RtpPreview({ content }: { content: ReportContent }) {

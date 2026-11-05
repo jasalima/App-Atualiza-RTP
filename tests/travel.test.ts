@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
-import { formatPhone, travelDocx, travelPdf, type TravelBeneficiary } from '../server/services/travel-export';
+import { formatPhone, photoCaption, travelDocx, travelPdf, type TravelBeneficiary } from '../server/services/travel-export';
 import { openCredential, sealCredential } from '../server/services/travel-credentials';
 
 const { access, query } = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn() }));
@@ -55,6 +55,19 @@ describe('formatPhone', () => {
     expect(pdf.numpages).toBe(2);
     expect(pdf.text.split('REGISTRO FOTOGRÁFICO')[0]).toContain('Caso o relatório não seja encaminhado');
     expect(pdf.text).toContain('23/10/2026');
+  });
+});
+describe('Formulário 26 — observações e fotos', () => {
+  it('keeps the notes right below the table even with a long objective and long titles', async () => {
+    const long = { ...b, project: 'Atualização do Plano de Bacia Hidrográfica do Rio Formoso e implantação do sistema de gestão integrada — PAJE / UFT / FAPTO', role: 'Assessor Técnico Especializado (Modelagem, Sistematização e normalização de produtos)' };
+    const activity = 'Deslocamento à Lagoa da Confusão para Participação na 1ª Consulta Pública referente à revisão e atualização do Plano da Bacia Hidrográfica do Rio Formoso.';
+    const pdf = await pdfParse(await travelPdf(long, { departure: '2026-10-19', returnDate: '2026-10-19', objective: `Participação na 1ª Consulta Pública referente à revisão e atualização do Plano da Bacia Hidrográfica do Rio Formoso, a ser realizada no dia 19 de outubro de 2026, no auditório da APROEST.`, entries: [{ date: '2026-10-19', activity }, { date: '2026-10-19', activity: 'Retorno a Palmas-TO.' }] }));
+    expect(pdf.numpages).toBe(2);
+    expect(pdf.text.split('REGISTRO FOTOGRÁFICO')[0]).toContain('Caso o relatório não seja encaminhado');
+  });
+  it('numbers the photos as Imagem 1, Imagem 2…', () => {
+    expect(photoCaption(0, 'Abertura da consulta')).toBe('Imagem 1 - Abertura da consulta');
+    expect(photoCaption(5, '  ')).toBe('Imagem 6');
   });
 });
 describe('tenant authorization', () => {
