@@ -17,10 +17,16 @@ const nextConfig: NextConfig = {
     '/api/signatures': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/signatures/*/sign': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/minutes/*/pdf': ['./node_modules/pdfkit/js/data/**/*'],
-    '/api/minutes/*/send': ['./node_modules/pdfkit/js/data/**/*']
+    '/api/minutes/*/send': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/minutes/*/invitations': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/external-signatures/*': ['./node_modules/pdfkit/js/data/**/*']
   },
   async headers() {
-    return [{
+    return [{ source: '/assinar-externo/:path*', headers: [
+      { key: 'Referrer-Policy', value: 'no-referrer' },
+      { key: 'Cache-Control', value: 'private, no-store' },
+      { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" }
+    ] }, {
       source: '/sw.js',
       headers: [
         { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },

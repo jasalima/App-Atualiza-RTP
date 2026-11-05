@@ -20,18 +20,24 @@ import TravelAccountability from './screens/TravelAccountability';
 import TravelReportEditor from './screens/TravelReportEditor';
 import Connectivity from './screens/Connectivity';
 import Documents from './screens/Documents';
+import ExternalSignature from './screens/ExternalSignature';
+import Manual from './screens/Manual';
 import { MySignatures, SignPage, SignerShell, VerifyPage } from './screens/Signatures';
 import { MinuteEditor, MinutesList } from './screens/Minutes';
 import VerifyDocumentPage from './screens/VerifyDocument';
 import './connectivity.css';
 import './minutes.css';
 import './access.css';
+import './guide.css';
 import { InstallAppButton } from './pwa';
 import NotificationBell from './NotificationBell';
 
 function App() {
+  const pathname = useLocation().pathname;
+  if (pathname.startsWith('/assinar-externo/')) return <ToastProvider><Routes><Route path="/assinar-externo/:token" element={<ExternalSignature />} /></Routes></ToastProvider>;
+  if (pathname === '/ajuda') return <Manual />;
   // Signature verification is public: anyone holding a signed document can check it.
-  if (useLocation().pathname.startsWith('/verificar')) return <ToastProvider><Routes><Route path="/verificar" element={<VerifyPage />} /><Route path="/verificar/:code" element={<VerifyPage />} /><Route path="/verificar-documento" element={<VerifyDocumentPage />} /><Route path="/verificar-documento/:code" element={<VerifyDocumentPage />} /></Routes></ToastProvider>;
+  if (pathname.startsWith('/verificar')) return <ToastProvider><Routes><Route path="/verificar" element={<VerifyPage />} /><Route path="/verificar/:code" element={<VerifyPage />} /><Route path="/verificar-documento" element={<VerifyDocumentPage />} /><Route path="/verificar-documento/:code" element={<VerifyDocumentPage />} /></Routes></ToastProvider>;
   return <Authenticated />;
 }
 
@@ -194,6 +200,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
           {g.items.filter(([to]) => (canManage || !['/projects', '/plans', '/generate'].includes(to)) && (to !== '/atas' || canManage || !!user.modules?.some((m) => m.module === 'minutes' && m.projectId === project?.id))).map(([to, label, Icon]) => <NavLink key={to} to={to}><Icon />{label}</NavLink>)}
         </div>)}
         <div className="rail-foot">
+          <NavLink to="/ajuda"><BookOpen />Manual e ajuda</NavLink>
           {user.role === 'admin' && <NavLink to="/settings"><Settings />Configurações</NavLink>}
           <InstallAppButton />
           <button onClick={logout}><LogOut />Sair</button>

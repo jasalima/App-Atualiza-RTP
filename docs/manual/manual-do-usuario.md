@@ -20,9 +20,9 @@ Criar uma ata e colher assinaturas: páginas 22 a 24.
 
 ## Sobre esta edição
 
-Edição 1.0 • 05 de novembro de 2026
+Edição ilustrada 1.1 • 05 de novembro de 2026
 
-Manual elaborado a partir dos módulos, telas e regras presentes no código do RTP Inteligente nesta data. Os exemplos são ilustrativos; nenhum telefone, senha ou documento real é necessário para acompanhar as instruções.
+Manual elaborado a partir dos módulos, telas e regras presentes no código do RTP Inteligente nesta data. Inclui telas da aplicação com dados fictícios e diagramas dos principais fluxos. Nenhum telefone, senha ou documento real é necessário para acompanhar as instruções.
 
 > Os menus e as ações disponíveis dependem do seu perfil, do projeto selecionado e dos módulos liberados pela administração. Use o endereço do sistema fornecido pela sua instituição.
 
@@ -558,7 +558,7 @@ O membro e a coordenação precisam ter contas e contatos corretos no sistema. A
 
 4. Se aparecer Aguardando a sua vez, aguarde o signatário anterior. Nas atas, os participantes podem assinar em qualquer ordem.
 
-5. Quando sua assinatura estiver disponível, informe o CPF. Se já houver CPF associado a assinaturas anteriores, use o mesmo.
+5. Quando sua assinatura estiver disponível, informe o CPF confirmado pela administração para sua própria conta. Um CPF diferente é bloqueado, inclusive no primeiro uso. Se o cadastro estiver pendente, peça a conferência em Configurações.
 
 6. Marque a declaração de leitura e concordância. Clique em Assinar documento e aguarde Assinatura registrada.
 
@@ -616,7 +616,7 @@ O membro e a coordenação precisam ter contas e contatos corretos no sistema. A
 
 4. Marque Assina para os participantes que devem assinar. A ação Presentes assinam facilita a seleção, mas a lista deve ser conferida.
 
-5. Se precisar, use Adicionar convidado externo e informe nome completo, instituição, cargo ou função e e-mail. Antes de encaminhar, confira se os signatários possuem os vínculos de acesso exigidos pelo sistema.
+5. Para alguém sem conta, use Adicionar convidado externo. Preencha nome, instituição, cargo, e-mail, CPF e WhatsApp com DDI e DDD. Marque Este convidado deve assinar a ata. Confira os dados com o titular antes de adicionar.
 
 6. Salve a ata. Confira se há pelo menos um signatário marcado antes de finalizar e encaminhar.
 
@@ -630,7 +630,7 @@ O membro e a coordenação precisam ter contas e contatos corretos no sistema. A
 
 4. Antes de encaminhar a ata, a equipe confere o responsável e a conexão. Há um responsável de envio das atas por projeto.
 
-> O fluxo de atas usa o responsável de envio configurado para o projeto. Essa escolha deve ser conferida mesmo quando quem redige a ata já possui WhatsApp conectado.
+> Membros assinam pelo próprio login. Convidados externos recebem link individual e confirmam CPF e código pelo WhatsApp, sem criar conta. Um CPF já vinculado a uma conta deve seguir o fluxo interno.
 
 <!-- page -->
 # 22. Finalizar e colher assinaturas da ata
@@ -674,7 +674,7 @@ Excluir ata: pode apagar os arquivos e manter apenas a auditoria. Para atas com 
 
 5. Conclua o cadastro e copie a credencial exibida. A senha temporária aparece uma única vez; envie-a diretamente à pessoa por um canal individual.
 
-6. Oriente o usuário a entrar e criar a senha definitiva. A listagem indica Troca pendente enquanto essa etapa estiver pendente.
+6. Oriente o usuário a criar a senha definitiva. Antes de assinar, abra Editar acesso, confira CPF confirmado e WhatsApp com o titular e informe o motivo da conferência. Salve o acesso. Para a própria conta administrativa, use Confirmar meu CPF.
 
 ## Ajustar permissões
 
@@ -778,3 +778,128 @@ Confira a conta, o projeto, os módulos liberados e sua inclusão entre os signa
 4. Guarde a documentação nos módulos correspondentes e use Sair ao terminar em um dispositivo compartilhado.
 
 > Para retomar uma tarefa: WhatsApp, página 6; envio, página 7; acervo, página 8; RTP, página 15; assinaturas, página 20; atas, página 22; usuários, página 25.
+
+<!-- page -->
+# 27. Fluxo visual do RTP
+
+Siga esta sequência para transformar os registros do projeto em um documento conferido e assinado.
+
+[fluxo:rtp]
+
+> Antes de assinar, o membro pode revisar e editar o RTP. Salvar cria uma nova versão. Depois da primeira assinatura, o conteúdo fica protegido e mudanças exigem cancelamento e nova coleta.
+
+<!-- page -->
+# 28. Tela: conectar o WhatsApp
+
+![Meu WhatsApp e QR Code na tela Conectividade. O QR desta figura é ilustrativo e não conecta aparelhos.](telas/whatsapp.png)
+
+## O que conferir nesta tela
+
+1. Meu WhatsApp identifica a conexão da conta no projeto atual.
+
+2. Clique em Conectar meu WhatsApp. No celular, use Aparelhos conectados > Conectar um aparelho para ler o QR exibido no seu sistema.
+
+3. Aguarde Conectado ou use Atualizar estado. Se expirar, gere outro código.
+
+> A preparação de conexões pela coordenação não faz o pareamento do celular. Cada pessoa conecta seu próprio WhatsApp pela própria conta.
+
+<!-- page -->
+# 29. Tela: acervo de documentos
+
+![Acervo com um arquivo fictício, sua categoria, o membro relacionado e as ações disponíveis.](telas/documentos.png)
+
+## Encontrar e usar um arquivo
+
+1. Use a busca e os filtros para localizar o documento. Confira título, membro e categoria.
+
+2. Enviar documentos adiciona novos arquivos ao acervo do projeto.
+
+3. As ações da linha permitem visualizar, baixar, enviar pelo WhatsApp e consultar detalhes e versões.
+
+> O envio de um arquivo ao acervo e o envio pelo WhatsApp são operações diferentes. Confira o botão adequado à tarefa.
+
+<!-- page -->
+# 30. Tela: enviar um documento
+
+![Painel Enviar documento com destinatário, telefone, formato e confirmação de conferência. Dados fictícios.](telas/enviar-documento.png)
+
+## Antes de confirmar
+
+1. Selecione o destinatário e confira o telefone completo, com DDI e DDD.
+
+2. Confira o formato e a identificação do documento. Nos arquivos do acervo, o formato é o original.
+
+3. Marque Conferi o documento e o número do destinatário. Depois, use Enviar pelo WhatsApp.
+
+> Se a resposta for incerta, confira a conversa antes de tentar novamente. Aceitação pelo servidor não comprova entrega ou leitura no celular.
+
+<!-- page -->
+# 31. Tela: revisar o RTP recebido
+
+![Editor do RTP pela página de assinatura, com campos que o próprio membro pode revisar antes de assinar.](telas/revisar-rtp.png)
+
+## Revisar, salvar e assinar
+
+1. Abra o link e entre na sua própria conta. Use Revisar e editar RTP para completar as informações.
+
+2. Confira as seções e clique em Salvar alterações. Leia novamente a versão salva.
+
+3. Informe o CPF da sua conta, marque a declaração e clique em Assinar documento.
+
+> Salvar a edição cria outra versão e retira uma aprovação anterior; a coordenação deve conferir a situação do RTP. Se o documento mudar desde sua leitura, atualize a página e confira novamente. Não é possível assinar com o CPF de outra conta.
+
+<!-- page -->
+# 32. Tela: cadastrar convidado externo
+
+![Cadastro de convidado sem conta, com CPF e WhatsApp para confirmação individual da assinatura.](telas/convidado-externo.png)
+
+## Dados que a organização deve conferir
+
+1. Informe o nome completo, a instituição e a função da pessoa.
+
+2. Para assinatura externa, marque Este convidado deve assinar a ata e preencha CPF válido e WhatsApp com DDI e DDD.
+
+3. Confirme os dados com o próprio titular. Depois de adicionar, confira a marca Assina na lista de participantes.
+
+> Um membro que tem conta deve ser incluído pelo cadastro e assinar com seu login. O convite externo é destinado a quem não possui conta no sistema.
+
+<!-- page -->
+# 33. Tela: confirmar o convidado
+
+![Página de assinatura externa pedindo o CPF e o código recebido no WhatsApp cadastrado. Dados fictícios.](telas/confirmar-convidado.png)
+
+## Como o convidado continua
+
+1. Abra o link individual recebido no WhatsApp. Confira seu nome e o documento indicado.
+
+2. Informe o CPF cadastrado e clique em Receber código pelo WhatsApp. O código segue somente ao número cadastrado pela organização.
+
+3. Digite os seis números recebidos e confirme. O código vale por cinco minutos e permite até cinco tentativas.
+
+4. Leia a ata, confirme seu CPF e a declaração e clique em Assinar ata. A confirmação de identidade vale por dez minutos.
+
+> O link vale por sete dias. Se expirar, peça à coordenação para usar Reenviar convites pendentes na ata; links expirados são renovados. Se os dados estiverem incorretos, a ata precisa ser corrigida pelo fluxo de reabertura. Não compartilhe o link nem o código.
+
+<!-- page -->
+# 34. Fluxo visual da assinatura externa
+
+O convite externo permite colher uma assinatura sem conceder acesso aos demais dados do projeto.
+
+[fluxo:external]
+
+> Conhecer apenas um CPF não basta: o convidado precisa também confirmar o código recebido no WhatsApp cadastrado. As atas continuam permitindo assinaturas em qualquer ordem.
+
+<!-- page -->
+# 35. Tela: manual disponível online
+
+![Página Manual e ajuda com o download do PDF e os assuntos principais do guia.](telas/manual-online.png)
+
+## Consultar quando precisar
+
+1. No menu, abra Manual e ajuda. Usuários somente de assinatura também encontram esse acesso na barra superior.
+
+2. Use Baixar manual em PDF para guardar uma cópia ou Ler manual no navegador para consultar online.
+
+3. No PDF, clique no sumário ou use os marcadores para ir ao procedimento desejado.
+
+> Estas figuras mostram a aplicação com dados fictícios. O conteúdo e as opções exibidos na sua conta dependem do seu perfil e do projeto selecionado.

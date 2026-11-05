@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { requireModule } from './modules';
 import { sql } from './db';
 import { clientIp, signerCandidates } from './signatures';
+import { normalizeCpf } from './cpf';
+import { guestSlot, guestPhone } from './external-signatures';
 import { requestView } from './signature-view';
 import { contentImageKeys, minuteFolder, minuteVerifyLink, newPublicCode, versionHash, versionSignatures } from './minutes-core';
 import { deletePrivateObjects } from './storage';
@@ -33,7 +35,7 @@ export async function draftOf(row: Row): Promise<MinuteDraft> {
     objective: String(row.objective), place: String(row.place), header: { ...DEFAULT_HEADER, ...(row.header as object) }, intro: (row.intro ?? null) as MinuteDraft['intro'],
     topics: (row.topics ?? []) as MinuteDraft['topics'], decisions: (row.decisions ?? null) as MinuteDraft['decisions'], nextMeeting: { date: null, time: null, notes: '', ...(row.next_meeting as object) },
     closing: (row.closing ?? null) as MinuteDraft['closing'], attachments: (row.attachments ?? []) as MinuteDraft['attachments'],
-    participants: people.map((p) => ({ scholarId: p.scholar_id ? String(p.scholar_id) : null, authUserId: p.auth_user_id ? String(p.auth_user_id) : null, name: String(p.name), institution: String(p.institution), role: String(p.role), email: String(p.email), attendance: p.attendance as MinuteDraft['participants'][number]['attendance'], signs: Boolean(p.signs) }))
+    participants: people.map((p) => ({ scholarId: p.scholar_id ? String(p.scholar_id) : null, authUserId: p.auth_user_id ? String(p.auth_user_id) : null, name: String(p.name), institution: String(p.institution), role: String(p.role), email: String(p.email), cpf: String(p.cpf ?? ''), phone: String(p.phone ?? ''), attendance: p.attendance as MinuteDraft['participants'][number]['attendance'], signs: Boolean(p.signs) }))
   };
 }
 
@@ -45,8 +47,8 @@ const optDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().or(z.literal(
 const optTime = z.string().regex(/^\d{2}:\d{2}$/).nullable().or(z.literal('').transform(() => null));
 const participant = z.object({
   scholarId: z.string().uuid().nullable(), authUserId: z.string().min(1).max(80).nullable(), name: z.string().trim().min(1).max(200), institution: z.string().trim().max(200),
-  role: z.string().trim().max(200), email: z.string().trim().max(200), attendance: z.enum(['present', 'absent', 'justified', 'guest']), signs: z.boolean()
-}).refine((p) => !p.signs || (p.authUserId && (p.attendance === 'present' || p.attendance === 'guest')), { message: 'Só assinam participantes presentes com acesso ao sistema.' });
+  role: z.string().trim().max(200), email: z.string().trim().max(200), cpf: z.string().max(20).default(''), phone: z.string().max(35).default(''), attendance: z.enum(['present', 'absent', 'justified', 'guest']), signs: z.boolean()
+}).refine((p) => !p.signs || ((p.attendance === 'present' || p.attendance === 'guest') && (!!p.authUserId || (!p.scholarId && p.attendance === 'guest' && !!normalizeCpf(p.cpf) && /^\d{12,15}$/.test(guestPhone(p.phone))))), { message: 'Para assinar: membro presente com conta, ou convidado externo com CPF válido e WhatsApp com DDI e DDD.' });
 export const draftInput = z.object({
   title: z.string().trim().min(1).max(200), subject: z.string().trim().max(400), meetingDate: optDate, startsAt: optTime, endsAt: optTime,
   modality: z.enum(['online', 'presencial', 'hibrida']), location: z.string().trim().max(300), platform: z.string().trim().max(120), chairedBy: z.string().trim().max(200), draftedBy: z.string().trim().max(200),
@@ -69,8 +71,8 @@ export async function saveDraft(id: string, projectId: string, userId: string, d
       intro=${json(d.intro)}::jsonb,topics=${json(d.topics)}::jsonb,decisions=${json(d.decisions)}::jsonb,next_meeting=${json(d.nextMeeting)}::jsonb,closing=${json(d.closing)}::jsonb,
       attachments=${json(d.attachments)}::jsonb,status='editing',updated_by=${userId},updated_at=now() WHERE id=${id}::uuid AND status IN ('draft','editing')`,
     sql`DELETE FROM meeting_minute_participants WHERE minute_id=${id}::uuid`,
-    ...d.participants.map((p, i) => sql`INSERT INTO meeting_minute_participants(minute_id,position,scholar_id,auth_user_id,name,institution,role,email,attendance,signs)
-      VALUES(${id}::uuid,${i},${p.scholarId}::uuid,${p.authUserId},${p.name},${p.institution},${p.role},${p.email},${p.attendance},${p.signs})`),
+    ...d.participants.map((p, i) => sql`INSERT INTO meeting_minute_participants(minute_id,position,scholar_id,auth_user_id,name,institution,role,email,attendance,signs,cpf,phone)
+      VALUES(${id}::uuid,${i},${p.scholarId}::uuid,${p.authUserId},${p.name},${p.institution},${p.role},${p.email},${p.attendance},${p.signs},${p.cpf},${p.phone})`),
     sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${userId},${projectId}::uuid,'update','meeting_minute',${id})`
   ]);
 }
@@ -180,16 +182,29 @@ export async function sendForSignature(id: string, request: Request) {
   const draft = await draftOf(row);
   // The account of each member is resolved again now: a link corrected after the ata was written wins.
   const current = new Map((await participantCandidates(String(row.project_id))).filter((c) => c.scholarId).map((c) => [c.scholarId!, c.authUserId]));
-  const chosen = draft.participants.map((p) => (p.scholarId && current.has(p.scholarId) ? { ...p, authUserId: current.get(p.scholarId) ?? null } : p)).filter((p) => p.signs && p.authUserId);
+  const chosen = draft.participants.map((p) => (p.scholarId && current.has(p.scholarId) ? { ...p, authUserId: current.get(p.scholarId) ?? null } : p)).filter((p) => p.signs);
   if (!chosen.length) throw fail('Marque em Participantes quem deve assinar a ata.', 400);
   const accounts = new Map((await signerCandidates(String(row.project_id))).map((c) => [c.authUserId, c]));
-  const missing = chosen.filter((p) => !accounts.has(p.authUserId!));
+  const guests = chosen.filter((p) => !p.authUserId && !p.scholarId && p.attendance === 'guest');
+  const missing = chosen.filter((p) => !guests.includes(p) && !accounts.has(p.authUserId!));
   if (missing.length) throw fail(`Sem acesso ativo ao projeto: ${missing.map((p) => p.name).join(', ')}. Crie um acesso de assinatura em Configurações.`, 400);
+  for (const p of guests) {
+    if (!normalizeCpf(p.cpf ?? '') || !/^\d{12,15}$/.test(guestPhone(p.phone ?? ''))) throw fail(`Confira CPF e WhatsApp de ${p.name}.`, 400);
+    if (p.email.trim() && [...accounts.values()].some(a => a.email.toLowerCase() === p.email.trim().toLowerCase())) throw fail(`${p.name}: este e-mail já tem conta no projeto. Inclua a pessoa pelo cadastro para assinar com seu próprio login.`, 400);
+    const [member] = await sql`SELECT 1 FROM signer_identities WHERE cpf=${normalizeCpf(p.cpf!)} OR (phone<>'' AND phone=${guestPhone(p.phone!)})`;
+    if (member) throw fail(`${p.name}: CPF ou telefone já vinculado a uma conta. Inclua a pessoa pelo cadastro e solicite sua assinatura pelo login.`, 400);
+  }
+  const keys = chosen.map(p => p.authUserId || normalizeCpf(p.cpf ?? ''));
+  if (new Set(keys).size !== chosen.length) throw fail('Há signatários repetidos na ata. Confira as contas e os CPFs dos convidados.', 400);
+  const slots = chosen.map((p) => {
+    const account = p.authUserId ? accounts.get(p.authUserId) : null;
+    return { ...p, name: account?.name ?? p.name, role: account?.roleLabel ?? p.role, signerId: crypto.randomUUID(), authUserId: account?.authUserId ?? `external:${crypto.randomUUID()}`, external: !account };
+  });
   const requestId = crypto.randomUUID(), label = `${minuteNumber(Number(row.seq), Number(row.year))} — ${String(row.subject) || String(row.title)}`;
   try {
     await sql.transaction([
       sql`INSERT INTO signature_requests(id,project_id,source_kind,source_id,label,created_by,mode,document_hash) VALUES(${requestId}::uuid,${row.project_id}::uuid,'minutes',${version.id}::uuid,${label},${access.session.user.id},'parallel',${String(version.content_hash)})`,
-      ...chosen.map((p, i) => sql`INSERT INTO signature_signers(request_id,step,auth_user_id,name,role_label,status) VALUES(${requestId}::uuid,${i + 1},${p.authUserId},${p.name},${[p.role, p.institution].filter(Boolean).join(' / ')},'pending')`),
+      ...slots.flatMap((p, i) => [sql`INSERT INTO signature_signers(id,request_id,step,auth_user_id,name,role_label,status) VALUES(${p.signerId}::uuid,${requestId}::uuid,${i + 1},${p.authUserId},${p.name},${[p.role, p.institution].filter(Boolean).join(' / ')},'pending')`, ...(p.external ? [guestSlot(p.signerId, normalizeCpf(p.cpf!)!, p.phone!)] : [])]),
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${access.session.user.id},${row.project_id}::uuid,'request_signatures','signature_request',${requestId},jsonb_build_object('kind','minutes'::text,'minuteId',${id}::text,'signers',${chosen.length}::int,'mode','parallel'::text,'ip',${clientIp(request)}::text))`
     ]);
   } catch (error) {

@@ -223,20 +223,20 @@ export function SignPage() {
   useEffect(() => { void load(); }, [load]);
   if (error) return <div className="stack"><Notice tone="crit" title="Não foi possível abrir o documento">{error}</Notice><div><NavLink className="btn" to="/assinaturas">Minhas assinaturas</NavLink></div></div>;
   if (!view) return <Skeleton />;
-  const r = view.request, doc = view.document, me = view.me, parallel = (view.mode ?? r.mode) === 'parallel';
+  const r = view.request, doc = view.document, me = view.me, reviewedHash = view.documentHash, parallel = (view.mode ?? r.mode) === 'parallel';
   const dirty = editing && draft !== null && JSON.stringify(draft) !== JSON.stringify(doc.kind === 'travel' ? doc.report : doc.kind === 'rtp' ? doc.content.sections : null);
-  function startEdit() { if (doc.kind === 'minutes') return; setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); }
+  function startEdit() { if (doc.kind === 'minutes') return; setAccept(false); setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); }
   async function save() {
     setSaving(true);
     try {
       if (doc.kind === 'travel') { const t = draft as TravelReport; await signatures.saveDocument(r.id, { origin: t.origin, destination: t.destination, departureDate: t.departureDate || null, returnDate: t.returnDate || null, paymentDate: t.paymentDate || null, objective: t.objective, entries: t.entries }); }
       else await signatures.saveDocument(r.id, { sections: draft });
-      toast('Alterações salvas no documento.'); setEditing(false); setDraft(null); await load();
+      toast('Alterações salvas no documento. Confira a versão atual antes de assinar.'); setAccept(false); setEditing(false); setDraft(null); await load();
     } catch (e) { toast(errorText(e), 'crit'); } finally { setSaving(false); }
   }
   async function sign(e: FormEvent) {
     e.preventDefault(); setSigning(true);
-    try { const res = await signatures.sign(r.id, cpf); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); }
+    try { const res = await signatures.sign(r.id, cpf, reviewedHash); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); }
     catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   async function reject() {
@@ -257,6 +257,8 @@ export function SignPage() {
     {!me && view.manager && r.status === 'pending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Você está acompanhando este documento">Sua assinatura não foi solicitada nele. Os signatários estão listados ao lado.</Notice></div>}
     {r.status === 'rejected' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Assinatura recusada">{r.closedReason}</Notice></div>}
     {r.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="mute" title="Solicitação cancelada pela coordenação">{r.closedReason}</Notice></div>}
+    {me && view.identityReady === false && me.status !== 'signed' && <Notice tone="warn" title="CPF da conta ainda não confirmado">Peça à administração para conferir seu CPF em Configurações &gt; Editar acesso. Apenas o CPF vinculado ao seu próprio login poderá assinar.</Notice>}
+    {doc.kind === 'rtp' && view.canEdit && !editing && <div className="rtp-review-action"><div><b>Revise o RTP antes de assinar</b><p>Você pode completar os resultados e corrigir as informações. Depois, salve e confira a versão que será assinada.</p></div><button className="btn btn-primary" onClick={startEdit}><PenLine />Revisar e editar RTP</button></div>}
 
     <div className="split">
       <div className="stack">
@@ -350,6 +352,7 @@ export function SignerShell({ user, logout }: { user: User; logout: () => void }
       {projects.length > 1 && <select className="signer-project" value={project?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} aria-label="Projeto">{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
       <NotificationBell />
       <span className="signer-user">{user.name}</span>
+      <NavLink className="btn btn-sm" to="/ajuda">Manual e ajuda</NavLink>
       <button className="btn btn-sm" onClick={logout}><LogOut />Sair</button>
     </header>
     <main className="page">

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Copy, KeyRound, Plus, UserRoundCheck, UserRoundX } from 'lucide-react';
 import AccessDrawer, { ModuleChips } from '../AccessDrawer';
+import IdentityDrawer from '../IdentityDrawer';
 import { scholars, settings, users } from '../api';
 import type { ManagedUser, Role, ScholarOverview } from '../types';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, fmt, roleLabel, useAsync, useScope, useToast } from '../ui';
@@ -8,7 +9,8 @@ import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, fmt, roleLabel, useAsyn
 export default function SettingsPage() {
   const { data, error } = useAsync(() => settings.status(), []);
   const managed = useAsync(() => users.list(), []);
-  const { projects } = useScope();
+  const { projects, user } = useScope();
+  const [identityAccount, setIdentityAccount] = useState<{ id: string; name: string } | null>(null);
   const toast = useToast();
   const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[formError,setFormError]=useState('');
   const [credential,setCredential]=useState<{email:string;password:string}|null>(null);
@@ -38,7 +40,8 @@ export default function SettingsPage() {
   }
   const row = (ok: boolean, title: string, detail: string, missing: string) => <li><div>{title}<small>{ok ? detail : missing}</small></div><Tag tone={ok ? 'ok' : 'crit'}>{ok ? 'Configurado' : 'Pendente'}</Tag></li>;
   return <>
-    <PageHead title="Configurações" description="Administração de acessos e estado das integrações do ambiente." />
+    <PageHead title="Configurações" description="Administração de acessos e estado das integrações do ambiente." actions={<button className="btn" onClick={() => setIdentityAccount({ id: user.id, name: user.name })}><KeyRound />Confirmar meu CPF</button>} />
+    {identityAccount && <IdentityDrawer userId={identityAccount.id} name={identityAccount.name} onClose={() => setIdentityAccount(null)} onSaved={() => { setIdentityAccount(null); toast('Identidade da conta confirmada.'); }} />}
     <section className="panel" style={{marginBottom:18}}>
       <div className="panel-head"><div><h2>Usuários da aplicação</h2><p>Crie acessos com senha temporária, habilite módulos para cada pessoa e revogue contas sem apagar o histórico.</p></div><button className="btn btn-primary" onClick={start} disabled={!projects.length}><Plus/>Cadastrar usuário</button></div>
       {managed.error?<div className="panel-pad"><Notice tone="crit">{managed.error}</Notice></div>:managed.loading?<Skeleton/>:!managed.data?.length?<Empty title="Nenhum usuário gerenciado">Cadastre o primeiro acesso depois de criar um projeto.</Empty>:

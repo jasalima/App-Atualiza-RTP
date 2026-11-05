@@ -4,10 +4,11 @@ import {
   Archive, ArrowDown, ArrowLeft, ArrowUp, Check, Copy, CopyPlus, Download, ExternalLink, FilePlus2, FileSignature, FileText, ListPlus, Lock, Paperclip,
   PenLine, Plus, RotateCcw, Send, ShieldCheck, Trash2, UserPlus, X
 } from 'lucide-react';
-import { minutes as minutesApi, signatures } from '../api';
+import { minutes as minutesApi, signatures, route } from '../api';
 import type { MinuteDraft, MinuteListItem, MinuteParticipant, MinuteTopic, MinuteView, ParticipantCandidate, RichDoc } from '../types';
 import { ATTENDANCE_LABEL, STATUS_LABEL, autoClosing, autoIntro, dateShort, docText, emptyDoc, type MinuteDisplayStatus } from '@/lib/minutes-model';
 import RichEditor from '../RichEditor';
+import { normalizeCpf } from '@/lib/cpf';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, useAsync, useScope, useToast } from '../ui';
 
 const TONE: Record<MinuteDisplayStatus, 'ok' | 'info' | 'warn' | 'crit' | 'mute'> = { draft: 'mute', editing: 'info', finalized: 'info', awaiting: 'warn', partial: 'warn', signed: 'ok', archived: 'mute', cancelled: 'crit' };
@@ -152,6 +153,7 @@ export function MinuteEditor() {
         <a className="btn" href={minutesApi.pdfUrl(view.id, true)} onClick={(e) => { if (dirty && editable) { e.preventDefault(); void save(true).then((ok) => { if (ok) window.location.href = minutesApi.pdfUrl(view.id, true); }); } }}><Download />Baixar PDF</a>
         {editable && <button className="btn btn-primary" disabled={busy} onClick={() => { if (confirm('Finalizar congela o conteúdo da ata (versão, hash e código de verificação). Alterações depois exigem reabrir a edição. Continuar?')) void act(() => minutesApi.finalize(view.id), 'Ata finalizada. Agora você pode encaminhá-la para assinatura.'); }}><Lock />Finalizar ata</button>}
         {view.status === 'finalized' && !openRequest && view.canEdit && <button className="btn btn-primary" disabled={busy || sending || !signers.length} onClick={() => void sendNow()}><Send />{sending ? 'Encaminhando…' : 'Encaminhar para assinatura'}</button>}
+        {openRequest?.status === 'pending' && view.canEdit && <button className="btn" disabled={busy} onClick={() => void act(() => route(`/minutes/${view.id}/invitations`, { method: 'POST' }), 'Reenvio solicitado. Confira o recebimento no WhatsApp.')}><Send />Reenviar convites pendentes</button>}
       </div>
     </header>
     {preview && <div className="pdf-modal" role="dialog" aria-modal="true" aria-label={`Pré-visualização de ${view.number}`} onKeyDown={(e) => e.key === 'Escape' && setPreview(null)}>
@@ -279,10 +281,11 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
   const [guest, setGuest] = useState(false);
   const keyOf = (p: { scholarId: string | null; authUserId: string | null; name: string }) => p.scholarId ?? p.authUserId ?? `guest:${p.name}`;
   const selected = new Map(draft.participants.map((p) => [keyOf(p), p]));
+  const maySign = (p: MinuteParticipant) => !!p.authUserId || (!p.scholarId && p.attendance === 'guest' && !!p.cpf && !!p.phone);
   const update = (key: string, patch: Partial<MinuteParticipant>) => onChange(draft.participants.map((p) => {
     if (keyOf(p) !== key) return p;
     const next = { ...p, ...patch };
-    if (!['present', 'guest'].includes(next.attendance) || !next.authUserId) next.signs = false;
+    if (!['present', 'guest'].includes(next.attendance) || !maySign(next)) next.signs = false;
     return next;
   }));
   const toggle = (c: ParticipantCandidate) => {
@@ -296,13 +299,13 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
     const on = !!p, name = p?.name ?? c!.name;
     return <tr key={key} className={on ? undefined : 'row-off'}>
       <td className="col-pick"><input type="checkbox" className="pick" checked={on} disabled={!editable || !c} onChange={() => c && toggle(c)} aria-label={`Incluir ${name} na ata`} /></td>
-      <td className="col-person"><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}` : 'Convidado externo'}</small></td>
+      <td className="col-person"><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}` : 'Convidado externo · confirmação por WhatsApp'}</small>{p && !c && <div className="guest-identity-fields"><label className="field">CPF do convidado<input inputMode="numeric" maxLength={20} value={p.cpf ?? ''} disabled={!editable} onChange={e => update(key, { cpf: e.target.value })} /></label><label className="field">WhatsApp (DDI + DDD)<input type="tel" maxLength={35} value={p.phone ?? ''} disabled={!editable} onChange={e => update(key, { phone: e.target.value })} /></label></div>}</td>
       <td>{on ? <input value={p!.institution} disabled={!editable} onChange={(e) => update(key, { institution: e.target.value })} placeholder="Ex.: UFT" aria-label={`Instituição de ${name}`} /> : <span className="muted">{c?.institution || '—'}</span>}</td>
       <td>{on ? <input value={p!.role} disabled={!editable} onChange={(e) => update(key, { role: e.target.value })} aria-label={`Função de ${name}`} /> : <span className="muted">{c?.role || '—'}</span>}</td>
       <td>{on && <select value={p!.attendance} disabled={!editable} onChange={(e) => update(key, { attendance: e.target.value as MinuteParticipant['attendance'] })} aria-label={`Situação de ${name}`}>
         {(c ? ['present', 'absent', 'justified'] : ['guest', 'absent', 'justified']).map((a) => <option key={a} value={a}>{ATTENDANCE_LABEL[a as MinuteParticipant['attendance']]}</option>)}
       </select>}</td>
-      <td>{on && <label className="sign-toggle" title={!p!.authUserId ? 'Sem acesso ao sistema: crie um acesso de assinatura em Configurações.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !p!.authUserId || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{p!.authUserId ? 'Assina' : 'Sem acesso'}</span></label>}</td>
+      <td>{on && <label className="sign-toggle" title={!maySign(p!) ? 'Membro: vincule a conta. Convidado externo: informe CPF e WhatsApp.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !maySign(p!) || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{maySign(p!) ? 'Assina' : 'Dados pendentes'}</span></label>}</td>
       <td>{on && editable && !c && <button className="icon-btn" aria-label={`Remover ${name}`} onClick={() => onChange(draft.participants.filter((x) => keyOf(x) !== key))}><X /></button>}</td>
     </tr>;
   };
@@ -310,7 +313,7 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
     <div className="panel-head"><div><h2>Participantes</h2><p>Marque quem esteve na reunião (o cadastro de cada pessoa não é alterado). {present} presente(s), {draft.participants.filter((p) => p.signs).length} assinam.</p></div>
       {editable && candidates && <div className="head-actions">
         <button className="btn btn-sm" onClick={() => onChange([...draft.participants, ...candidates.filter((c) => !selected.has(keyOf(c))).map((c) => ({ scholarId: c.scholarId, authUserId: c.authUserId, name: c.name, institution: c.institution, role: c.role, email: c.email, attendance: 'present' as const, signs: !!c.authUserId }))])}><ListPlus />Incluir todos</button>
-        <button className="btn btn-sm" onClick={() => onChange(draft.participants.map((p) => ({ ...p, signs: !!p.authUserId && ['present', 'guest'].includes(p.attendance) })))}><FileSignature />Presentes assinam</button>
+        <button className="btn btn-sm" onClick={() => onChange(draft.participants.map((p) => ({ ...p, signs: maySign(p) && ['present', 'guest'].includes(p.attendance) })))}><FileSignature />Presentes assinam</button>
         <button className="btn btn-sm btn-quiet" onClick={() => onChange([])}>Limpar</button>
       </div>}
     </div>
@@ -326,13 +329,19 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
   </section>;
 }
 function GuestDrawer({ onClose, onAdd }: { onClose: () => void; onAdd: (p: MinuteParticipant) => void }) {
-  const [p, setP] = useState({ name: '', institution: '', role: '', email: '' });
-  return <Drawer open onClose={onClose} title="Convidado externo" description="Pessoa que participou sem estar cadastrada no projeto. Para assinar, ela precisa de um acesso de assinatura (Configurações).">
-    <form className="stack" onSubmit={(e) => { e.preventDefault(); onAdd({ scholarId: null, authUserId: null, ...p, attendance: 'guest', signs: false }); }}>
+  const [p, setP] = useState({ name: '', institution: '', role: '', email: '', cpf: '', phone: '' });
+  const [signs, setSigns] = useState(true);
+  const [error, setError] = useState('');
+  return <Drawer open onClose={onClose} title="Convidado externo" description="Pessoa sem conta no sistema. Para assinar, receberá um link individual e confirmará o CPF e um código enviado ao WhatsApp cadastrado.">
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); if (signs && (!normalizeCpf(p.cpf) || !/^\d{12,15}$/.test(p.phone.replace(/\D/g, '')))) { setError('Confira o CPF válido e o WhatsApp com DDI e DDD antes de adicionar.'); return; } onAdd({ scholarId: null, authUserId: null, ...p, attendance: 'guest', signs }); }}>
       <label className="field">Nome completo<input required value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} /></label>
       <label className="field">Instituição<input value={p.institution} onChange={(e) => setP({ ...p, institution: e.target.value })} /></label>
       <label className="field">Cargo ou função<input value={p.role} onChange={(e) => setP({ ...p, role: e.target.value })} /></label>
       <label className="field">E-mail<input type="email" value={p.email} onChange={(e) => setP({ ...p, email: e.target.value })} /></label>
+      <label className="check"><input type="checkbox" checked={signs} onChange={e => setSigns(e.target.checked)} /><span>Este convidado deve assinar a ata</span></label>
+      <label className="field">CPF do convidado<input required={signs} inputMode="numeric" maxLength={20} value={p.cpf} onChange={e => setP({ ...p, cpf: e.target.value })} /><small>Confira o CPF diretamente com o titular. Ele será exigido ao assinar.</small></label>
+      <label className="field">WhatsApp do convidado (DDI + DDD)<input required={signs} type="tel" maxLength={35} placeholder="5563999999999" value={p.phone} onChange={e => setP({ ...p, phone: e.target.value })} /><small>O link e o código de confirmação serão enviados somente a este número.</small></label>
+      {error && <Notice tone="crit">{error}</Notice>}
       <div className="form-foot"><button type="button" className="btn btn-quiet" onClick={onClose}>Cancelar</button><button className="btn btn-primary"><UserPlus />Adicionar</button></div>
     </form>
   </Drawer>;

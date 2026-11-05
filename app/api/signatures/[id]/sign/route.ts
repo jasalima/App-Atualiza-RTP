@@ -1,13 +1,14 @@
 import { after } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
-import { clientIp, documentSource, normalizeCpf, requestAccess, sha256, type SignatureKind } from '@/lib/signatures';
+import { clientIp, documentSource, requestAccess, sha256, type SignatureKind } from '@/lib/signatures';
 import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { recordParallelSignature } from '@/lib/parallel-sign';
+import { assertSignerIdentity } from '@/lib/signature-identity';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 
-const input = z.object({ cpf: z.string().min(11).max(20), accept: z.literal(true, { message: 'Confirme a declaração para assinar.' }) });
+const input = z.object({ cpf: z.string().min(11).max(20), documentHash: z.string().regex(/^[a-f0-9]{64}$/), accept: z.literal(true, { message: 'Confirme a declaração para assinar.' }) });
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status });
 
 // Electronic signature of the current signer. What is signed is the SHA-256 of the
@@ -22,12 +23,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Atas (mode 'parallel'): every signer may sign at any time, in any order.
     const parallel = r.mode === 'parallel';
     if (!me || (parallel ? me.status !== 'pending' : access.current?.id !== me.id)) throw fail(me?.status === 'signed' ? 'Você já assinou este documento.' : 'Aguarde a sua vez: o documento segue a ordem de assinatura.', 409);
-    const cpf = normalizeCpf(body.cpf);
-    if (!cpf) throw fail('CPF inválido. Confira os números.', 400);
-    const [profile] = await sql`SELECT cpf FROM signer_profiles WHERE auth_user_id=${access.user.id}`;
-    if (profile && profile.cpf !== cpf) throw fail('Este CPF não corresponde ao usado nas suas assinaturas anteriores. Procure a coordenação se precisar corrigi-lo.', 409);
+    const cpf = await assertSignerIdentity(access.user.id, body.cpf);
 
     const source = await documentSource(String(r.project_id), r.source_kind as SignatureKind, String(r.source_id));
+    if (body.documentHash !== source.hash) throw fail('O documento foi atualizado desde a sua leitura. Atualize a página, confira a nova versão e assine novamente.', 409);
     if (r.document_hash && r.document_hash !== source.hash) throw fail('O documento não corresponde à versão enviada para assinatura.', 409);
     const previous = access.signers.filter((s) => s.status === 'signed');
     if (previous.some((s) => s.document_hash !== source.hash)) throw fail('O documento foi alterado depois da primeira assinatura. A coordenação precisa cancelar e solicitar novamente.', 409);
@@ -45,9 +44,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       after(() => dispatchAfterSignature(id, 'signed').catch((error) => console.error('signature dispatch', id, error)));
       return Response.json({ signed: true, signedAt, signatureHash, documentHash: source.hash, completed: result.completed, verificationCode: null });
     }
-    const [updated] = await sql.transaction([
+    const unchanged = source.rtp
+      ? sql`EXISTS(SELECT 1 FROM reports WHERE id=${r.source_id}::uuid AND current_version=${source.version})`
+      : sql`EXISTS(SELECT 1 FROM travel_reports WHERE id=${r.source_id}::uuid AND updated_at=${source.travel!.report.updatedAt}::timestamptz)`;
+    const [, updated] = await sql.transaction([
+      sql`SELECT id FROM signature_requests WHERE id=${id}::uuid FOR UPDATE`,
       sql`UPDATE signature_signers SET status='signed',cpf=${cpf},signed_at=${signedAt}::timestamptz,ip=${ip},user_agent=${userAgent},document_hash=${source.hash},signature_hash=${signatureHash}
-        WHERE id=${me.id}::uuid AND status='pending' RETURNING id`,
+        WHERE id=${me.id}::uuid AND status='pending' AND ${unchanged} AND EXISTS(SELECT 1 FROM signature_requests WHERE id=${id}::uuid AND status='pending') RETURNING id`,
       next
         ? sql`UPDATE signature_signers SET status='pending' WHERE id=${next.id}::uuid AND status='waiting' AND ${mine}`
         : sql`UPDATE signature_requests SET status='completed',completed_at=now(),document_hash=${source.hash},verification_code=${code} WHERE id=${id}::uuid AND status='pending' AND ${mine}`,

@@ -7,7 +7,7 @@ export type RichDoc = { type: 'doc'; content: RichNode[] };
 
 export type Attendance = 'present' | 'absent' | 'justified' | 'guest';
 export type Modality = 'online' | 'presencial' | 'hibrida';
-export type MinuteParticipant = { scholarId: string | null; authUserId: string | null; name: string; institution: string; role: string; email: string; attendance: Attendance; signs: boolean };
+export type MinuteParticipant = { scholarId: string | null; authUserId: string | null; name: string; institution: string; role: string; email: string; cpf?: string; phone?: string; attendance: Attendance; signs: boolean };
 export type MinuteTopic = { id: string; title: string; body: RichDoc; children: MinuteTopic[] };
 export type MinuteHeader = { lines: string[]; address: string; footer: string };
 export type MinuteAttachment = { key: string; name: string; mime: string; size: number; caption: string; width?: number; height?: number };
@@ -24,7 +24,7 @@ export type MinuteDraft = {
 /** What is frozen, signed and printed: automatic paragraphs resolved, no e-mails. */
 export type MinuteContent = Omit<MinuteDraft, 'intro' | 'closing' | 'participants' | 'decisions'> & {
   number: string; projectTitle: string; intro: RichDoc; closing: RichDoc; decisions: RichDoc;
-  participants: Array<Omit<MinuteParticipant, 'email' | 'scholarId'>>;
+  participants: Array<Omit<MinuteParticipant, 'email' | 'scholarId' | 'cpf' | 'phone'>>;
 };
 
 export type MinuteStatus = 'draft' | 'editing' | 'finalized' | 'archived' | 'cancelled';
@@ -147,6 +147,6 @@ export function freezeContent(d: MinuteDraft, meta: { number: string; projectTit
     intro: intro && !isEmptyDoc(intro) ? intro : autoIntro(d, meta.projectTitle),
     closing: closing && !isEmptyDoc(closing) ? closing : autoClosing(d),
     decisions: decisions ?? { type: 'doc', content: [] },
-    participants: participants.map(({ email: _e, scholarId: _s, ...p }) => p)
+    participants: participants.map(({ email: _e, scholarId: _s, cpf: _cpf, phone: _phone, ...p }) => p)
   };
 }
