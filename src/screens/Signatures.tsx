@@ -181,7 +181,8 @@ function Form26Preview({ view }: { view: SigningView & { document: { kind: 'trav
     <p>Cidade/UF origem: {r.origin || 'Palmas/TO'}<br />Cidade/UF destino: {r.destination || 'Lagoa da Confusão/TO'}</p>
     <p>Saída: {br(r.departureDate)} <span style={{ marginLeft: 24 }}>Retorno: {br(r.returnDate)}</span></p>
     <p>Data do pagamento da diária: {br(r.paymentDate)}</p>
-    <table className="paper-table">
+    <table className="paper-table paper-trip">
+      <colgroup><col style={{ width: '22%' }} /><col /></colgroup>
       <thead><tr><th colSpan={2}>DESCRIÇÃO DA VIAGEM<small>Descrever o objetivo da viagem e relatar os resultados, assim como outras informações pertinentes</small></th></tr></thead>
       <tbody>
         {r.objective.trim() && <tr><td colSpan={2}><b>Objetivo:</b> {r.objective}</td></tr>}

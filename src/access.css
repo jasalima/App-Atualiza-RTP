@@ -70,3 +70,8 @@
 .sign-card{border:2px solid var(--pivot);box-shadow:0 6px 20px rgba(46,122,78,.15);scroll-margin-top:20px}
 @media (max-width:600px){.sign-banner{flex-wrap:wrap}.sign-banner .btn{width:100%}}
 .icon-danger:hover{color:var(--alarm);background:var(--alarm-wash)}
+/* Form 26 preview: the table keeps the sheet width even with a signature seal inside. */
+.paper-trip{table-layout:fixed}
+.paper-trip td{overflow-wrap:anywhere}
+.paper-trip .seal{max-width:100%;min-width:0}
+.paper-trip .seal-body code{word-break:break-all}
