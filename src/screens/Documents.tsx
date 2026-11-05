@@ -62,9 +62,18 @@ export default function Documents() {
     if (reason === null) return;
     if (reason.trim().length < 5) { toast('Informe o motivo da exclusão (ao menos 5 caracteres).', 'crit'); return; }
     try {
+      const signedToo = async (run: (cancel: boolean) => Promise<unknown>) => {
+        try { await run(false); }
+        catch (e) {
+          if ((e as { code?: string }).code !== 'SIGNED' || !confirm(`${(e as Error).message}
+
+Cancelar as assinaturas e excluir? As assinaturas já registradas perderão a validade; o motivo informado fica registrado.`)) throw e;
+          await run(true);
+        }
+      };
       if (r.type === 'file') await documentsApi.remove(projectId, r.doc.id, reason.trim());
-      else if (r.type === 'rtp') await reportsApi.remove(r.report.id, reason.trim());
-      else await travelReports.remove(projectId, r.travel.id);
+      else if (r.type === 'rtp') await signedToo((cancel) => reportsApi.remove(r.report.id, reason.trim(), cancel));
+      else await signedToo((cancel) => travelReports.remove(projectId, r.travel.id, { cancelSignatures: cancel, reason: reason.trim() }));
       toast(`“${label}” excluído.`); await data.reload(); refreshSent();
     } catch (e) { toast(errorText(e), 'crit'); }
   }

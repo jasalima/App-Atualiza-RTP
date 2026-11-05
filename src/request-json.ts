@@ -16,7 +16,7 @@ export async function requestJson<T>(path: string, options: RequestInit = {}, fe
     }
     if (read && [408, 429, 500, 502, 503, 504].includes(response.status) && attempt + 1 < attempts) continue;
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(data?.error || 'Não foi possível concluir a operação.');
+    if (!response.ok) throw Object.assign(new Error(data?.error || 'Não foi possível concluir a operação.'), { status: response.status, code: data?.code as string | undefined });
     if (data === null) throw new Error('O servidor retornou uma resposta incompleta. Tente novamente.');
     return data as T;
   }

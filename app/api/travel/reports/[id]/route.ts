@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sql } from '@/lib/db';
-import { assertUnsigned } from '@/lib/signatures';
+import { assertUnsigned, releaseForDeletion } from '@/lib/signatures';
 import { deletePrivateObjects } from '@/lib/storage';
 import { loadTravelReport, sameOrigin, travelError, travelReportRow, travelReportUpdate } from '@/lib/travel';
 export const runtime = 'nodejs';
@@ -37,10 +37,10 @@ export async function DELETE(request: Request, { params }: Params) {
     sameOrigin(request);
     const { id } = await params, projectId = projectOf(request);
     const { session, report } = await loadTravelReport(projectId, id, true);
-    // A signed report is kept until its signatures are cancelled; open requests without signatures go with it.
-    await assertUnsigned('travel', id);
+    const body = z.object({ cancelSignatures: z.boolean().optional(), reason: z.string().max(1000).optional() }).parse(await request.json().catch(() => ({})));
+    // A signed report is deleted only if the coordination cancels its signatures together (with a reason).
+    await releaseForDeletion('travel', id, { ...body, manager: session.role === 'admin' || session.role === 'coordinator', userId: session.user.id, projectId });
     await sql.transaction([
-      sql`UPDATE signature_requests SET status='cancelled',closed_reason='Documento excluído.' WHERE source_kind='travel' AND source_id=${id}::uuid AND status='pending'`,
       sql`UPDATE travel_reports SET deleted_at=now() WHERE id=${id}::uuid AND project_id=${projectId}::uuid`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${session.user.id},${projectId}::uuid,'delete','travel_report',${id})`
     ]);

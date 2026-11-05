@@ -60,8 +60,8 @@ export async function travelFile(beneficiary: TravelBeneficiary, format: 'pdf' |
 }
 export function travelError(error: unknown) {
   if (error instanceof z.ZodError) return Response.json({ error: 'Confira os campos informados.' }, { status: 400 });
-  const e = error as { status?: number; message?: string };
-  return Response.json({ error: e.status ? e.message : 'Não foi possível concluir a operação. Verifique a configuração e tente novamente.' }, { status: e.status || 500 });
+  const e = error as { status?: number; message?: string; code?: string };
+  return Response.json({ error: e.status ? e.message : 'Não foi possível concluir a operação. Verifique a configuração e tente novamente.', ...(e.status && typeof e.code === 'string' ? { code: e.code } : {}) }, { status: e.status || 500 });
 }
 export function sameOrigin(request: Request) {
   if (request.headers.get('origin') !== new URL(request.url).origin) throw Object.assign(new Error('Origem da solicitação inválida.'), { status: 403 });

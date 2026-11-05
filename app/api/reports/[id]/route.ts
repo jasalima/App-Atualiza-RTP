@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { requireProject, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
-import { assertUnsigned } from '@/lib/signatures';
+import { assertUnsigned, releaseForDeletion } from '@/lib/signatures';
 
 export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}){
   try{
@@ -23,13 +23,12 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
 // and audit trail, and its number remains taken (numbers are never reused).
 export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){
   try{
-    const {id}=await params,body=z.object({reason:z.string().trim().min(5,'Informe o motivo da exclusão.')}).parse(await request.json().catch(()=>({})));
+    const {id}=await params,body=z.object({reason:z.string().trim().min(5,'Informe o motivo da exclusão.'),cancelSignatures:z.boolean().optional()}).parse(await request.json().catch(()=>({})));
     const reports=await sql`SELECT project_id,number FROM reports WHERE id=${id}::uuid AND deleted_at IS NULL`;
     if(!reports[0])return Response.json({error:'Relatório não encontrado.'},{status:404});
     const session=await requireProject(String(reports[0].project_id),true);
-    await assertUnsigned('rtp',id);
+    await releaseForDeletion('rtp',id,{cancelSignatures:body.cancelSignatures,reason:body.reason,manager:true,userId:session.user.id,projectId:String(reports[0].project_id)});
     await sql.transaction(tx=>[
-      tx`UPDATE signature_requests SET status='cancelled',closed_reason='Documento excluído.' WHERE source_kind='rtp' AND source_id=${id}::uuid AND status='pending'`,
       tx`UPDATE reports SET deleted_at=now() WHERE id=${id}::uuid`,
       tx`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${String(reports[0].project_id)}::uuid,'delete','report',${id},jsonb_build_object('number',${String(reports[0].number)}::text,'reason',${body.reason}::text))`
     ]);

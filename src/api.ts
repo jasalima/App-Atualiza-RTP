@@ -145,7 +145,7 @@ export const reports = {
   submit: async (id: string) => unwrap(await db.from('reports').update({ status: 'pending_review' }).eq('id', id)),
   approve: (id: string) => route(`/reports/${id}/approve`, { method: 'POST' }),
   reopen: (id: string, reason: string) => route(`/reports/${id}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  remove: (id: string, reason: string) => route(`/reports/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+  remove: (id: string, reason: string, cancelSignatures = false) => route(`/reports/${id}`, { method: 'DELETE', body: JSON.stringify({ reason, cancelSignatures }) }),
   usedNumbers: async (projectId: string): Promise<string[]> =>
     unwrap<Array<{ number: string }>>(await db.from('reports').select('number').eq('project_id', projectId)).map((r) => r.number),
   resolve: (id: string, validationId: string, note: string) => route<Validation>(`/reports/${id}/validations`, { method: 'PATCH', body: JSON.stringify({ validationId, note }) })
@@ -192,7 +192,7 @@ export const travelReports = {
   get: (projectId: string, id: string) => route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`),
   save: (projectId: string, id: string, body: Omit<TravelReport, 'id' | 'projectId' | 'scholarId' | 'scholarName' | 'createdAt' | 'updatedAt' | 'beneficiary'>) =>
     route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`, { method: 'PUT', body: JSON.stringify(body) }),
-  remove: (projectId: string, id: string) => route(`/travel/reports/${id}?projectId=${projectId}`, { method: 'DELETE' }),
+  remove: (projectId: string, id: string, opts: { cancelSignatures?: boolean; reason?: string } = {}) => route(`/travel/reports/${id}?projectId=${projectId}`, { method: 'DELETE', body: JSON.stringify(opts) }),
   export: (projectId: string, id: string, format: 'pdf' | 'docx', filename: string) => download(`/travel/reports/${id}/export?projectId=${projectId}&format=${format}`, filename)
 };
 

@@ -98,6 +98,24 @@ export async function requestAccess(id: string) {
   return { user, ...loaded, me, manager, current, anySigned, canEdit };
 }
 
+/**
+ * Before deleting a document: with signatures (pending with at least one, or completed) it is kept
+ * unless the coordination asks to cancel them together (reason required, audited). Open requests
+ * without signatures are always cancelled with the document.
+ */
+export async function releaseForDeletion(kind: SignatureKind, sourceId: string, o: { cancelSignatures?: boolean; reason?: string; manager: boolean; userId: string; projectId: string }) {
+  const [signed] = await sql`SELECT r.status FROM signature_requests r WHERE r.source_kind=${kind} AND r.source_id=${sourceId}::uuid
+    AND (r.status='completed' OR (r.status='pending' AND EXISTS(SELECT 1 FROM signature_signers s WHERE s.request_id=r.id AND s.status='signed'))) LIMIT 1`;
+  if (signed && !o.cancelSignatures) throw Object.assign(fail(signed.status === 'completed' ? 'Este documento está assinado eletronicamente. Para excluí-lo, as assinaturas precisam ser canceladas junto.' : 'Este documento tem assinaturas registradas. Para excluí-lo, a solicitação de assinatura precisa ser cancelada junto.', 409), { code: 'SIGNED' });
+  if (signed && !o.manager) throw fail('Somente a coordenação pode cancelar assinaturas para excluir um documento.', 403);
+  const reason = (o.reason ?? '').trim();
+  if (signed && reason.length < 5) throw fail('Informe o motivo: as assinaturas registradas serão canceladas.', 400);
+  const closed = await sql`UPDATE signature_requests SET status='cancelled',closed_reason=${signed ? `Documento excluído: ${reason}` : 'Documento excluído.'}
+    WHERE source_kind=${kind} AND source_id=${sourceId}::uuid AND status IN ('pending','completed') RETURNING id`;
+  if (signed) for (const r of closed) await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${o.userId},${o.projectId}::uuid,'cancel_signatures','signature_request',${String(r.id)},jsonb_build_object('reason',${reason}::text,'cause','document_deleted'::text))`;
+  return closed.length;
+}
+
 /** Editing is blocked while a document carries signatures (pending with signatures, or completed). */
 export async function assertUnsigned(kind: SignatureKind, sourceId: string) {
   const [locked] = await sql`SELECT r.status FROM signature_requests r WHERE r.source_kind=${kind} AND r.source_id=${sourceId}::uuid

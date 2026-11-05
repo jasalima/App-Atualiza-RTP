@@ -36,7 +36,19 @@ function TravelSection({ projectId, scholarId, canManage }: { projectId: string;
   }
   async function remove(r: TravelReport) {
     if (!confirm(`Excluir o relatório de viagem de ${r.scholarName}${r.destination ? ` a ${r.destination}` : ''}?`)) return;
-    try { await travelReports.remove(projectId, r.id); setReports((list) => list.filter((x) => x.id !== r.id)); toast('Relatório de viagem excluído.'); }
+    try {
+      try { await travelReports.remove(projectId, r.id); }
+      catch (e) {
+        // Signed report: the coordination may cancel the signatures and delete in one step.
+        if ((e as { code?: string }).code !== 'SIGNED') throw e;
+        const reason = prompt(`${(e as Error).message}
+
+Cancelar as assinaturas e excluir o relatório de ${r.scholarName}? As assinaturas já registradas perderão a validade. Informe o motivo:`);
+        if (reason === null) return;
+        await travelReports.remove(projectId, r.id, { cancelSignatures: true, reason });
+      }
+      setReports((list) => list.filter((x) => x.id !== r.id)); toast('Relatório de viagem excluído.');
+    }
     catch (e) { toast(errorText(e), 'crit'); }
   }
   async function exportBlank(format: 'pdf' | 'docx') {

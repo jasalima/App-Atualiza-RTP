@@ -32,7 +32,7 @@ export async function requireProject(projectId:string,manage=false){
 }
 
 export function routeError(error:unknown){
-  const e=error as {message?:string;status?:number};
+  const e=error as {message?:string;status?:number;code?:string};
   console.error(error);
-  return Response.json({error:e.message||'Erro interno.'},{status:e.status||500});
+  return Response.json({error:e.message||'Erro interno.',...(e.status&&typeof e.code==='string'?{code:e.code}:{})},{status:e.status||500});
 }
