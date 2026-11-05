@@ -60,9 +60,32 @@ export async function managesProject(userId: string, projectId: string) {
   return (await sql`SELECT 1 FROM user_project_access WHERE auth_user_id=${userId} AND (role='admin' OR (role='coordinator' AND project_id=${projectId}::uuid)) LIMIT 1`).length > 0;
 }
 /** Session allowed on a request: one of its signers or a manager of the project. */
+/**
+ * Pending signature slots of the member whose e-mail is the session's, but bound to an account
+ * with another e-mail (a wrong member link), go back to the session: the person proves who they
+ * are by logging in with the member's own e-mail. Each move is recorded in the audit trail.
+ */
+export async function reclaimSignerSlots(user: { id: string; email?: string | null }) {
+  const email = String(user.email ?? '').trim().toLowerCase();
+  if (!email) return 0;
+  const moved = await sql`WITH wrong AS (
+      SELECT s.id,s.request_id,s.auth_user_id AS previous,r.project_id FROM signature_signers s
+      JOIN signature_requests r ON r.id=s.request_id AND r.status='pending'
+      JOIN scholars m ON m.project_id=r.project_id AND m.deleted_at IS NULL AND m.email<>'' AND lower(m.email)=${email} AND m.full_name=s.name
+      WHERE s.status='pending' AND s.auth_user_id<>${user.id}
+        AND NOT EXISTS(SELECT 1 FROM neon_auth."user" b WHERE b.id::text=s.auth_user_id AND lower(b.email)=${email})
+        AND NOT EXISTS(SELECT 1 FROM signature_signers x WHERE x.request_id=s.request_id AND x.auth_user_id=${user.id}))
+    UPDATE signature_signers s SET auth_user_id=${user.id} FROM wrong WHERE s.id=wrong.id AND s.status='pending'
+    RETURNING wrong.request_id,wrong.previous,wrong.project_id`;
+  for (const m of moved) await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${m.project_id}::uuid,'reclaim_signature_slot','signature_request',${String(m.request_id)},
+    jsonb_build_object('previousAccount',${String(m.previous)}::text,'reason','Vaga de assinatura vinculada a uma conta com outro e-mail; devolvida à conta do próprio membro.'::text))`;
+  return moved.length;
+}
+
 export async function requestAccess(id: string) {
   const { user, mustChangePassword } = await requireUser();
   if (mustChangePassword) throw fail('Troque a senha temporária antes de continuar.', 428);
+  await reclaimSignerSlots(user);
   const loaded = await loadRequest(id);
   const me = loaded.signers.find((s) => s.auth_user_id === user.id) ?? null;
   const manager = await managesProject(user.id, String(loaded.request.project_id));

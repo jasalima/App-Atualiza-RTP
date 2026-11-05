@@ -52,3 +52,20 @@
 .legal-basis{border:1px solid var(--line);border-radius:var(--r-sm);background:#f7f9f8;padding:8px 12px;font-size:12.5px;color:var(--ink-2)}
 .legal-basis summary{cursor:pointer;font-weight:700;font-size:11.5px;letter-spacing:.04em;color:var(--ink)}
 .legal-basis p{margin:6px 0 0;line-height:1.5;text-align:justify}
+.topbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:14px clamp(20px,3vw,40px) 0}
+.topbar-user{font-size:13px;color:var(--ink-2)}
+.bell-labeled{width:auto;height:36px;border-radius:999px;padding:0 14px 0 11px;gap:7px;display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--sheet);font-size:13.5px;font-weight:600;color:var(--ink)}
+.bell-labeled:hover{border-color:var(--ink-2);background:var(--sheet)}
+.bell-labeled .bell-badge{position:static;box-shadow:none;margin-left:2px}
+.bell-alert.bell-labeled{border-color:#e0aaa2;background:var(--alarm-wash);color:#8c2a20}
+.bell-alert svg{animation:ring 2.4s ease-in-out 1}
+@keyframes ring{0%,100%{transform:rotate(0)}10%,30%{transform:rotate(14deg)}20%,40%{transform:rotate(-14deg)}50%{transform:rotate(0)}}
+@media (prefers-reduced-motion:reduce){.bell-alert svg{animation:none}}
+@media (max-width:860px){.topbar{display:none}}
+.sign-banner{display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:18px;border-radius:var(--r-md);background:var(--pivot-wash);border:1px solid #9cc8ab;color:#1f5a38}
+.sign-banner>svg{width:26px;height:26px;flex-shrink:0}
+.sign-banner div{flex:1;display:flex;flex-direction:column}
+.sign-banner b{font-size:16px}
+.sign-banner span{font-size:13.5px;color:var(--ink-2)}
+.sign-card{border:2px solid var(--pivot);box-shadow:0 6px 20px rgba(46,122,78,.15);scroll-margin-top:20px}
+@media (max-width:600px){.sign-banner{flex-wrap:wrap}.sign-banner .btn{width:100%}}

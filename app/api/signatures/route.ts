@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { z } from 'zod';
 import { requireProject, requireUser } from '@/lib/authorize';
 import { sql } from '@/lib/db';
-import { documentSource, signLink, signerCandidates, type SignerRow } from '@/lib/signatures';
+import { documentSource, reclaimSignerSlots, signLink, signerCandidates, type SignerRow } from '@/lib/signatures';
 import { requestView } from '@/lib/signature-view';
 import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { sameOrigin, travelError } from '@/lib/travel';
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     if (query.get('mine')) {
       const { user, mustChangePassword } = await requireUser();
       if (mustChangePassword) throw Object.assign(new Error('Troque a senha temporária antes de continuar.'), { status: 428 });
+      await reclaimSignerSlots(user);
       const rows = await sql`SELECT r.*,p.title AS project_title,me.status AS my_status,me.step AS my_step FROM signature_requests r
         JOIN signature_signers me ON me.request_id=r.id AND me.auth_user_id=${user.id} JOIN projects p ON p.id=r.project_id
         WHERE r.status<>'cancelled' ORDER BY (me.status='pending' AND r.status='pending') DESC, r.created_at DESC LIMIT 100`;

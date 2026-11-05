@@ -252,6 +252,8 @@ export function SignPage() {
       <div className="head-actions"><Tag tone={requestTone[r.status]}>{requestText[r.status]}</Tag></div>
     </div>
     {result && <div style={{ marginBottom: 16 }}><Notice tone="ok" title="Assinatura registrada">{result.completed ? (doc.kind === 'minutes' ? <>Todas as assinaturas foram concluídas. A ata assinada pode ser conferida pelo código <b>{doc.publicCode}</b>.</> : <>Todas as assinaturas foram concluídas. Código de verificação: <b>{result.code}</b>.</>) : parallel ? 'Sua assinatura foi incluída na ata. Os demais participantes continuam podendo assinar.' : 'O documento segue agora para a próxima pessoa da ordem de assinatura.'}</Notice></div>}
+    {view.canSign && !result && <div className="sign-banner" role="status"><PenLine /><div><b>Sua assinatura está pendente</b><span>Leia o documento e assine com o seu CPF. {parallel ? 'Os participantes assinam em qualquer ordem.' : 'É a sua vez na ordem de assinatura.'}</span></div><a className="btn btn-go" href="#assinar" onClick={(e) => { e.preventDefault(); document.getElementById('assinar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); (document.querySelector('#assinar input') as HTMLInputElement | null)?.focus({ preventScroll: true }); }}>Assinar agora</a></div>}
+    {!me && view.manager && r.status === 'pending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Você está acompanhando este documento">Sua assinatura não foi solicitada nele. Os signatários estão listados ao lado.</Notice></div>}
     {r.status === 'rejected' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Assinatura recusada">{r.closedReason}</Notice></div>}
     {r.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="mute" title="Solicitação cancelada pela coordenação">{r.closedReason}</Notice></div>}
 
@@ -272,11 +274,7 @@ export function SignPage() {
       </div>
 
       <aside className="side">
-        <div className="panel">
-          <h3>{parallel ? 'Assinaturas (em qualquer ordem)' : 'Ordem de assinatura'}</h3>
-          <Steps signers={r.signers} parallel={parallel} />
-        </div>
-        {view.canSign && <form className="panel stack" style={{ gap: 12 }} onSubmit={sign}>
+        {view.canSign && <form id="assinar" className="panel stack sign-card" style={{ gap: 12 }} onSubmit={sign}>
           <h3 style={{ marginBottom: 0 }}><PenLine size={17} style={{ verticalAlign: '-3px', marginRight: 6 }} />Assinar eletronicamente</h3>
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Assinando como <b>{me!.name}</b>{me!.roleLabel ? `, ${me!.roleLabel}` : ''}.</p>
           <label className="field">CPF<input inputMode="numeric" autoComplete="off" value={cpf} onChange={(e) => setCpf(formatCpf(e.target.value))} placeholder="000.000.000-00" required disabled={signing || dirty} />{me!.cpfOnFile && <small>Use o mesmo CPF das assinaturas anteriores ({me!.cpfOnFile}).</small>}</label>
@@ -288,6 +286,10 @@ export function SignPage() {
           <p className="muted hash" style={{ fontSize: 11.5, margin: 0, overflowWrap: 'anywhere' }}>Hash SHA-256 do conteúdo: {view.documentHash}</p>
           <LegalBasis compact />
         </form>}
+        <div className="panel">
+          <h3>{parallel ? 'Assinaturas (em qualquer ordem)' : 'Ordem de assinatura'}</h3>
+          <Steps signers={r.signers} parallel={parallel} />
+        </div>
         {!view.canSign && view.canEdit && !editing && <button className="btn btn-block" onClick={startEdit}><PenLine />Alterar ou inserir informações</button>}
         {waitingTurn && <Notice tone="info" title="Aguardando a sua vez">Você será a próxima pessoa a assinar assim que a anterior concluir.</Notice>}
         {me?.status === 'signed' && <Notice tone="ok" title="Você já assinou">Assinatura registrada em {when(me.signedAt)}{me.cpf ? `, CPF ${me.cpf}` : ''}.</Notice>}

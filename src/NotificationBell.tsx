@@ -13,7 +13,7 @@ const ago = (iso: string) => {
 };
 
 /** Bell with the person's pending actions; refreshed every minute, on focus and on navigation. */
-export default function NotificationBell({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
+export default function NotificationBell({ tone = 'dark', labeled = false }: { tone?: 'dark' | 'light'; labeled?: boolean }) {
   const [data, setData] = useState<{ items: Item[]; pending: number } | null>(null), [open, setOpen] = useState(false), [pos, setPos] = useState({ top: 0, left: 0 });
   const button = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null), location = useLocation();
   const load = useCallback(() => { route<{ items: Item[]; pending: number }>('/notifications').then(setData, () => undefined); }, []);
@@ -27,15 +27,15 @@ export default function NotificationBell({ tone = 'dark' }: { tone?: 'dark' | 'l
   }, [open]);
   function toggle() {
     const r = button.current!.getBoundingClientRect();
-    setPos({ top: r.bottom + 8, left: Math.max(8, Math.min(r.left, window.innerWidth - 388)) });
+    setPos({ top: r.bottom + 8, left: Math.max(8, Math.min(labeled ? r.right - 380 : r.left, window.innerWidth - 388)) });
     setOpen(!open); if (!open) load();
   }
   const pending = data?.pending ?? 0, items = data?.items ?? [];
   const actions = items.filter((i) => i.action), follow = items.filter((i) => !i.action);
   const row = (i: Item) => { const Icon = ICON[i.kind]; return <li key={i.id}><NavLink to={i.link} data-kind={i.kind}><Icon /><span><b>{i.title}</b><small>{i.detail}</small></span><time>{ago(i.at)}</time></NavLink></li>; };
   return <>
-    <button ref={button} className={`bell bell-${tone}`} onClick={toggle} aria-expanded={open} aria-haspopup="dialog" aria-label={pending ? `Notificações: ${pending} pendência(s)` : 'Notificações'}>
-      <Bell />{pending > 0 && <span className="bell-badge">{pending > 9 ? '9+' : pending}</span>}
+    <button ref={button} className={`bell bell-${tone}${labeled ? ' bell-labeled' : ''}${pending ? ' bell-alert' : ''}`} onClick={toggle} aria-expanded={open} aria-haspopup="dialog" aria-label={pending ? `Notificações: ${pending} pendência(s)` : 'Notificações'}>
+      <Bell />{labeled && <span className="bell-label">Notificações</span>}{pending > 0 && <span className="bell-badge">{pending > 9 ? '9+' : pending}</span>}
     </button>
     {open && <div ref={panel} className="bell-panel" role="dialog" aria-label="Notificações" style={{ top: pos.top, left: pos.left }}>
       <header><b>Notificações</b><small>{pending ? `${pending} pendência(s) com você` : 'Nenhuma pendência com você'}</small></header>

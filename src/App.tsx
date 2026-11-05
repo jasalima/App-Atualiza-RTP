@@ -202,6 +202,7 @@ function Shell({ user, logout }: { user: User; logout: () => void }) {
       </aside>
       <div className="main">
         <div className="bar"><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu"><Menu /></button><b>RTP Inteligente</b><span style={{ marginLeft: 'auto' }}><NotificationBell /></span></div>
+        <div className="topbar"><NotificationBell tone="light" labeled /><span className="topbar-user">{user.name}</span></div>
         <main className="page">
           {/* Screens assume a project in focus: render them only after the list arrives. */}
           {!loaded ? <Skeleton /> : loadError ? <div className="stack"><Notice tone="crit" title="Não foi possível carregar os projetos">{loadError}</Notice><div><button className="btn btn-primary" onClick={() => void reloadProjects()}>Tentar novamente</button></div></div> :

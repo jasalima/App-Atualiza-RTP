@@ -1,6 +1,7 @@
 import { requireUser, routeError } from '@/lib/authorize';
 import { sql } from '@/lib/db';
 import { minuteNumber } from '@/lib/minutes-model';
+import { reclaimSignerSlots } from '@/lib/signatures';
 
 // The bell: what is waiting for the person (signatures to give, refused requests) and what
 // they follow (requests they opened, atas being written, recently completed signatures).
@@ -12,6 +13,7 @@ export async function GET() {
   try {
     const { user, mustChangePassword } = await requireUser();
     if (mustChangePassword) return Response.json({ items: [], pending: 0 });
+    await reclaimSignerSlots(user);
     const [toSign, mine, drafts] = await Promise.all([
       sql`SELECT r.id,r.label,r.created_at,r.mode FROM signature_signers s JOIN signature_requests r ON r.id=s.request_id
         WHERE s.auth_user_id=${user.id} AND s.status='pending' AND r.status='pending' ORDER BY r.created_at DESC LIMIT 30`,
