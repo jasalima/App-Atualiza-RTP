@@ -5,6 +5,7 @@ import { scholars as scholarsApi, signatures, users } from '../api';
 import type { User, Project, MySignature, ReportContent, SignatureRequest, SignatureSigner, SignerCandidate, SigningView, TravelReport, VerifyResult } from '../types';
 import { PhotoManager, TravelFields } from '../TravelFields';
 import { Drawer, Empty, Notice, PageHead, Pivot, ScopeContext, Skeleton, Tag, errorText, fmt, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 import { MinuteEditor, MinutesList } from './Minutes';
 import NotificationBell from '../NotificationBell';
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
@@ -146,6 +147,8 @@ function RequestDrawer({ projectId, kind, sourceId, scholarId, isAdmin, onClose,
 export function MySignatures() {
   const [list, setList] = useState<MySignature[] | null>(null), [error, setError] = useState('');
   useEffect(() => { signatures.mine().then(setList, (e) => setError(errorText(e))); }, []);
+  // A new request (or a signature by someone else) appears without reloading.
+  useLive(['signature_requests'], () => { signatures.mine().then(setList, () => undefined); });
   const pending = list?.filter((r) => r.status === 'pending' && r.myStatus === 'pending') ?? [];
   return <>
     <PageHead title="Minhas assinaturas" description="Documentos enviados para você assinar eletronicamente. Abra, confira e assine sem baixar nada." />

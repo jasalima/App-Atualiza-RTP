@@ -10,6 +10,7 @@ import { ATTENDANCE_LABEL, STATUS_LABEL, autoClosing, autoIntro, dateShort, docT
 import RichEditor from '../RichEditor';
 import { normalizeCpf } from '@/lib/cpf';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, useAsync, useScope, useToast } from '../ui';
+import { useLive } from '../live';
 
 const TONE: Record<MinuteDisplayStatus, 'ok' | 'info' | 'warn' | 'crit' | 'mute'> = { draft: 'mute', editing: 'info', finalized: 'info', awaiting: 'warn', partial: 'warn', signed: 'ok', archived: 'mute', cancelled: 'crit' };
 const when = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(iso)) : '—';
@@ -34,6 +35,8 @@ export function MinutesList() {
     try { await minutesApi.status(m.id, 'delete', ok); toast(`${m.number} excluída.`); await list.reload(); } catch (e) { toast(errorText(e), 'crit'); }
   }
   const list = useAsync(() => minutesApi.list(projectId), [projectId]);
+  // Atas created, signed or deleted by others appear without reloading the page.
+  useLive(['meeting_minutes', 'signature_requests'], () => void list.refresh(), projectId);
   const [q, setQ] = useState(''), [status, setStatus] = useState(''), [from, setFrom] = useState(''), [to, setTo] = useState(''), [creating, setCreating] = useState(false);
   const rows = useMemo(() => (list.data ?? []).filter((m) => {
     if (status && m.displayStatus !== status) return false;
@@ -106,6 +109,8 @@ export function MinuteEditor() {
   }, [id]);
   useEffect(() => { void load(); }, [load]);
   const editable = !!view && view.canEdit && ['draft', 'editing'].includes(view.status);
+  // New signatures (or a status change by someone else) show up at once; never while the text is being edited.
+  useLive(['signature_requests', 'meeting_minutes'], () => { if (!editable && !dirty) void load(); }, view?.projectId);
   const change = (patch: Partial<MinuteDraft>) => { setDraft((d) => (d ? { ...d, ...patch } : d)); setDirty(true); };
 
   // Autosave two seconds after the last change; one save at a time.
