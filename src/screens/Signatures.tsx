@@ -9,6 +9,7 @@ import { useLive } from '../live';
 import { MinuteEditor, MinutesList } from './Minutes';
 import NotificationBell from '../NotificationBell';
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
+import qrcode from 'qrcode-generator';
 
 /** Legal basis shown wherever an electronic signature is given or checked. */
 export function LegalBasis({ compact }: { compact?: boolean }) {
@@ -179,6 +180,21 @@ export function MySignatures() {
   </>;
 }
 
+/** Authenticity block printed right below the Form 26 table once everyone signed: QR code and legal basis. */
+function Authenticity({ code }: { code: string }) {
+  const url = `${window.location.origin}/verificar/${code}`;
+  const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+  return <div className="paper-auth">
+    <span className="paper-auth-qr" dangerouslySetInnerHTML={{ __html: qr.createSvgTag({ cellSize: 2, margin: 2, scalable: true }) }} />
+    <div>
+      <b>AUTENTICIDADE DO DOCUMENTO</b>
+      <span>Confira pelo QR Code ao lado ou em <a href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\//, '')}</a></span>
+      <span>Código de verificação: <b>{code}</b></span>
+      <p><b>Amparo legal:</b> {LEGAL_BASIS}</p>
+    </div>
+  </div>;
+}
+
 /** Form 26 as the signer reads it. */
 function Form26Preview({ view }: { view: SigningView & { document: { kind: 'travel' } } }) {
   const { beneficiary: b, report: r } = view.document, s = view.request.signers;
@@ -208,6 +224,7 @@ function Form26Preview({ view }: { view: SigningView & { document: { kind: 'trav
         })}
       </tbody>
     </table>
+    {view.request.status === 'completed' && view.request.verificationCode && <Authenticity code={view.request.verificationCode} />}
     <h4 className="paper-center">REGISTRO FOTOGRÁFICO</h4>
     {r.photos?.length ? <div className="paper-photos">{r.photos.map((p, i) => <figure key={p.key}>{p.url && <img src={p.url} alt={p.caption || p.name} />}<figcaption>Imagem {i + 1}{p.caption?.trim() ? ` - ${p.caption.trim()}` : ''}</figcaption></figure>)}</div> : <p className="muted">Nenhuma foto inserida ainda.</p>}
   </article>;

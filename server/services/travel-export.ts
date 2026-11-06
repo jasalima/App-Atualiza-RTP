@@ -1,7 +1,7 @@
 import { AlignmentType, BorderStyle, Document, HeightRule, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, Tab, TabStopType, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
-import { manifestDocx, manifestPdf, SEAL_H_PT, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
+import { authenticityDocx, authenticityPdf, hasAuthenticity, manifestDocx, manifestPdf, SEAL_H_PT, SEAL_MAX_PT, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
 
 export type TravelBeneficiary = { name: string; phone: string; email: string; project: string; role: string };
 /** Filled travel data; absent fields stay as blank lines for handwriting. */
@@ -114,6 +114,8 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
           signature('De acordo (Coordenador do projeto):', 2)
         ]
       }),
+      // Authenticity right below the table: QR code to the public verification and the legal basis.
+      ...(hasAuthenticity(fill.signatures) ? [new Paragraph({ spacing: { before: 0, after: 80 }, children: [] }), authenticityDocx(fill.signatures, { font: FONT, width: DATE_COL + ACT_COL })] : []),
       // Notes right below the table, in a smaller type so they share its page.
       ...TRAVEL_NOTES.map((t, i) => new Paragraph({ spacing: { before: i ? 0 : 60, after: 0, line: 220 }, keepLines: true,
         children: [...(i ? [] : [new TextRun({ text: 'Observações: ', bold: true, font: FONT, size: 18 })]), new TextRun({ text: t, font: FONT, size: 18 })] })),
@@ -182,22 +184,26 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const signRow = (label: string, step: number) => {
       const signed = fill.signatures?.signers.find((x) => x.step === step);
       if (!signed) return row('Data:', label, 52, true, true);
-      h = 60; fits(h); box(h);
+      // Label on the left, compact signature block (gov.br style) on the right of the same cell:
+      // green for the beneficiary, gold for the coordination.
+      const cw = tw - c1 - 2 * pad, lw = cw - Math.min(cw, SEAL_MAX_PT) - 8;
+      h = Math.max(SEAL_H_PT + 10, font().heightOfString(label, { width: lw }) + 10); fits(h); box(h);
       font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 28, { width: c1 - 2 * pad });
-      font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
-      // Compact signature block (gov.br style): green for the beneficiary, gold for the coordination.
-      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + h - SEAL_H_PT - 5, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: fill.signatures?.verifyUrl, align: 'right' });
+      font().text(label, tx + c1 + pad, y + 5, { width: lw });
+      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + (h - SEAL_H_PT) / 2, width: cw, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: fill.signatures?.verifyUrl, align: 'right' });
       y += h;
     };
     signRow('Assinatura do beneficiário:', 1);
     signRow('De acordo (Coordenador do projeto):', 2);
+    // Authenticity right below the table: QR code to the public verification and the legal basis.
+    if (hasAuthenticity(fill.signatures)) { y += 4; y += authenticityPdf(doc, fill.signatures, { x: tx, y, width: tw, regular: 'Helvetica', bold: 'Helvetica-Bold' }); }
 
     // The notes stay right below the table: they use the footer band of the page and, when
     // the table is long, a smaller type (down to 7.5 pt) instead of jumping to a page of their own.
     doc.y = y + 4;
     const notesBottom = doc.page.height - 24;
     const notesH = (size: number) => TRAVEL_NOTES.reduce((s, n, i) => s + doc.font('Helvetica').fontSize(size).heightOfString(i ? n : `Observações: ${n}`, { width: w, lineGap: .6 }), 0);
-    const size = [FS, 9.5, 9, 8.5, 8, 7.5].find((s) => doc.y + notesH(s) <= notesBottom) ?? 7.5;
+    const size = [FS, 9.5, 9, 8.5, 8, 7.5, 7, 6.5].find((s) => doc.y + notesH(s) <= notesBottom) ?? 6.5;
     const keepMargin = doc.page.margins.bottom; doc.page.margins.bottom = 24;
     doc.font('Helvetica-Bold').fontSize(size).text('Observações:', x, doc.y, { width: w, continued: true, lineGap: .6 }); doc.font('Helvetica').fontSize(size).text(` ${TRAVEL_NOTES[0]}`, { lineGap: .6 });
     for (const n of TRAVEL_NOTES.slice(1)) doc.font('Helvetica').fontSize(size).text(n, x, doc.y, { width: w, lineGap: .6 });

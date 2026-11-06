@@ -1,6 +1,7 @@
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
 import { AlignmentType, BorderStyle, ImageRun, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import { SEAL_EMBLEM_GOLD, SEAL_EMBLEM_GREEN } from '../assets/seal-emblems';
+import qrcode from 'qrcode-generator';
 
 /** Electronic signatures collected for a document, printed on its last page. */
 export type SignedBy = { step: number; name: string; roleLabel: string; cpf: string; signedAt: string; ip: string; signatureHash: string };
@@ -153,4 +154,63 @@ export function sealPdf(doc: PDFKit.PDFDocument, s: SignedBy, o: { x: number; y:
   doc.font(o.regular).fontSize(5.3).fillColor('#555555').text(l.check, tx, y + 27, { width: tw, lineBreak: false });
   doc.restore(); doc.fillColor('black').strokeColor('black');
   return h;
+}
+
+/* Authenticity block: QR code to the public verification and the legal basis -------------------- */
+// Printed right below the signatures once everyone has signed (the verification code exists only then).
+const AUTH_TITLE = 'AUTENTICIDADE DO DOCUMENTO';
+const authLines = (m: SignatureManifest) => ({ url: m.verifyUrl!, code: m.verificationCode!, legal: LEGAL_BASIS });
+export const hasAuthenticity = (m?: SignatureManifest | null): m is SignatureManifest => !!m?.verifyUrl && !!m.verificationCode && m.status === 'completed';
+
+/** QR matrix drawn as vector squares, with a one-module quiet zone. */
+function drawQrPdf(doc: PDFKit.PDFDocument, text: string, x: number, y: number, size: number) {
+  const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), cell = size / (n + 2);
+  doc.save().rect(x, y, size, size).fill('#FFFFFF');
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) doc.rect(x + (c + 1) * cell, y + (r + 1) * cell, cell + 0.02, cell + 0.02);
+  doc.fill('#000000').restore();
+}
+
+/** PDF: QR code on the left; title, where to verify, the code and the legal basis on the right. Returns its height. */
+export function authenticityPdf(doc: PDFKit.PDFDocument, m: SignatureManifest, o: { x: number; y: number; width: number; regular: string; bold: string }) {
+  const l = authLines(m), qr = 58, tx = o.x + qr + 12, tw = o.width - qr - 18;
+  const legalH = doc.font(o.regular).fontSize(6.3).heightOfString(`Amparo legal: ${l.legal}`, { width: tw, lineGap: 0.4 });
+  const h = Math.max(qr + 8, 8 + 9 + 8.5 + 8.5 + legalH + 6), { x, y } = o;
+  doc.save();
+  doc.lineWidth(0.5).strokeColor('#9A9A9A').rect(x, y, o.width, h).stroke();
+  drawQrPdf(doc, l.url, x + 4, y + (h - qr) / 2, qr);
+  let ty = y + 5;
+  doc.font(o.bold).fontSize(7.6).fillColor('#000000').text(AUTH_TITLE, tx, ty, { width: tw, lineBreak: false }); ty += 9;
+  const lead = 'Confira pelo QR Code ao lado ou em ', leadW = doc.font(o.regular).fontSize(6.8).widthOfString(lead);
+  doc.text(lead, tx, ty, { width: tw, lineBreak: false });
+  doc.fillColor('#0B4F8A').text(l.url.replace(/^https?:\/\//, ''), tx + leadW, ty, { width: tw - leadW, link: l.url, underline: true, lineBreak: false }); ty += 8.5;
+  doc.fillColor('#000000').font(o.regular).fontSize(6.8).text('Código de verificação: ', tx, ty, { width: tw, continued: true }).font(o.bold).text(l.code); ty += 8.5;
+  doc.font(o.bold).fontSize(6.3).text('Amparo legal: ', tx, ty, { width: tw, continued: true, lineGap: 0.4, align: 'justify' }).font(o.regular).text(l.legal, { lineGap: 0.4, align: 'justify' });
+  doc.restore(); doc.fillColor('black').strokeColor('black');
+  return h;
+}
+
+/** DOCX: the same block as a two-column table with a thin frame (QR as a GIF image). */
+export function authenticityDocx(m: SignatureManifest, o: { font: string; width: number }) {
+  const l = authLines(m), qrCol = 1500, textCol = o.width - qrCol;
+  const qr = qrcode(0, 'M'); qr.addData(l.url); qr.make();
+  const gif = Buffer.from(qr.createDataURL(4, 4).split(',')[1], 'base64');
+  const frame = { style: BorderStyle.SINGLE, size: 4, color: '9A9A9A' }, none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const run = (text: string, opts: { bold?: boolean; size?: number; color?: string; underline?: boolean } = {}) => new TextRun({ text, bold: opts.bold, size: opts.size ?? 14, color: opts.color ?? '000000', font: o.font, underline: opts.underline ? {} : undefined });
+  const line = (children: TextRun[], justify = false) => new Paragraph({ alignment: justify ? AlignmentType.JUSTIFIED : AlignmentType.LEFT, spacing: { before: 0, after: 20, line: 200 }, children });
+  return new Table({
+    width: { size: o.width, type: WidthType.DXA }, columnWidths: [qrCol, textCol], layout: TableLayoutType.FIXED,
+    borders: { top: frame, bottom: frame, left: frame, right: frame, insideHorizontal: none, insideVertical: none },
+    rows: [new TableRow({ cantSplit: true, children: [
+      new TableCell({ width: { size: qrCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60, left: 80, right: 40 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ type: 'gif', data: gif, transformation: { width: 76, height: 76 } })] })] }),
+      new TableCell({ width: { size: textCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60, left: 80, right: 100 },
+        children: [
+          line([run(AUTH_TITLE, { bold: true, size: 15 })]),
+          line([run('Confira pelo QR Code ao lado ou em '), run(l.url.replace(/^https?:\/\//, ''), { color: '0B4F8A', underline: true })]),
+          line([run('Código de verificação: '), run(l.code, { bold: true })]),
+          line([run('Amparo legal: ', { bold: true, size: 13 }), run(l.legal, { size: 13 })], true)
+        ] })
+    ] })]
+  });
 }

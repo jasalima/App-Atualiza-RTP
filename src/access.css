@@ -147,3 +147,10 @@
 .sign-cell .seal{margin-left:auto}
 .sign-cell .paper-line{flex:1 1 40%}
 @media (max-width:600px){.paper-trip tbody tr.paper-sign td:first-child{white-space:normal}}
+/* Autenticidade logo abaixo do quadro do Formulário 26: QR Code e amparo legal. */
+.paper-auth{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;align-items:center;border:1px solid #9a9a9a;padding:6px 10px 6px 6px;margin:4px 0 12px;font-size:11px;line-height:1.35}
+.paper-auth-qr svg{display:block;width:84px;height:84px}
+.paper-auth div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.paper-auth a{overflow-wrap:anywhere}
+.paper-auth p{margin:2px 0 0;font-size:10px;text-align:justify}
+@media (max-width:600px){.paper-auth{grid-template-columns:64px minmax(0,1fr)}.paper-auth-qr svg{width:64px;height:64px}.paper-auth p{text-align:left}}

@@ -181,6 +181,10 @@ describe('signed exports', () => {
       expect(text).toContain('ELIANE MARQUES');
       expect(text).toContain('Data: 04/11/2026 12:30:00-0300 · IP 200.10.20.30');
       expect(text).toContain('Verifique em app.example/verificar/ABCD-1234-EF56');
+      // Authenticity right below the table: QR code, where to verify, the code and the legal basis.
+      expect(text).toContain('AUTENTICIDADE DO DOCUMENTO');
+      expect(text).toContain('Amparo legal:');
+      expect(text.indexOf('AUTENTICIDADE DO DOCUMENTO')).toBeLessThan(text.indexOf('Observações:'));
       // The full hash stays on the manifest page.
       expect(text).toMatch(/b{30}/);
       expect(text).toContain('***.982.247-**');
