@@ -12,7 +12,7 @@ import { LegalBasis } from './Signatures';
 const when = (iso: string | null | undefined) => iso ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(iso)).replace(',', ' às') : '—';
 const TONE: Record<DocumentVerification['result'], 'ok' | 'info' | 'warn' | 'crit'> = { signed: 'ok', partial: 'info', unsigned: 'info', cancelled: 'crit', superseded: 'warn', not_found: 'warn', integrity_failure: 'crit' };
 const HEADLINE: Record<DocumentVerification['result'], string> = {
-  signed: 'DOCUMENTO AUTÊNTICO', partial: 'DOCUMENTO AUTÊNTICO — ASSINATURAS EM ANDAMENTO', unsigned: 'DOCUMENTO AUTÊNTICO — AINDA SEM ASSINATURAS',
+  signed: 'REGISTROS CONFEREM — TOTALMENTE ASSINADO', partial: 'REGISTROS CONFEREM — ASSINATURAS EM ANDAMENTO', unsigned: 'REGISTROS CONFEREM — AINDA SEM ASSINATURAS',
   cancelled: 'DOCUMENTO CANCELADO', superseded: 'DOCUMENTO SUBSTITUÍDO', not_found: 'DOCUMENTO NÃO LOCALIZADO', integrity_failure: 'FALHA DE INTEGRIDADE'
 };
 const DETAIL: Record<DocumentVerification['result'], string> = {
@@ -61,14 +61,17 @@ export default function VerifyDocumentPage() {
             <h3 className="verify-h">Signatários</h3>
             <ol className="sign-steps">{result.signers.map((s, i) => <li key={i} data-status={s.status === 'signed' ? 'signed' : 'pending'}>
               <span className="sign-step-n">{s.status === 'signed' ? <CheckCircle2 /> : s.status === 'rejected' ? <XCircle /> : i + 1}</span>
-              <div><b>{s.name}</b><small>{s.roleLabel}</small><small>{s.status === 'signed' ? `Assinou em ${when(s.signedAt)} (horário de Brasília)` : s.status === 'rejected' ? 'Recusou a assinatura' : 'Assinatura pendente'}</small>{s.signatureId && <small className="hash">Identificador da assinatura: {s.signatureId}</small>}</div>
+              <div><b>{s.name}</b><small>{s.roleLabel}</small><small>{s.status === 'signed' ? `Assinou em ${when(s.signedAt)} (horário de Brasília)` : s.status === 'rejected' ? 'Recusou a assinatura' : 'Assinatura pendente'}</small>{s.signatureId && <small className="hash">Identificador da assinatura: {s.signatureId}</small>}{s.evidence && <small className="verify-evidence" data-level={s.evidence.level}>{s.evidence.text}</small>}</div>
             </li>)}</ol>
           </div>}
           {result.checks && <ul className="verify-checks">
             <li data-ok={result.checks.content}>{result.checks.content ? <CheckCircle2 /> : <XCircle />}Conteúdo confere com o hash SHA-256 emitido</li>
-            <li data-ok={result.checks.signatures}>{result.checks.signatures ? <CheckCircle2 /> : <XCircle />}Registros de assinatura conferem (nome, data, hora e evidências eletrônicas)</li>
+            <li data-ok={result.checks.signatures}>{result.checks.signatures ? <CheckCircle2 /> : <XCircle />}Hash de cada assinatura recalculado a partir do registro (signatário, CPF, data, hora e IP)</li>
+            {result.checks.evidence !== undefined && <li data-ok={result.checks.evidence}>{result.checks.evidence ? <CheckCircle2 /> : <XCircle />}Evidências de assinatura íntegras e encadeadas</li>}
           </ul>}
+          {result.checkKind && <CheckKindNote kind={result.checkKind} />}
           <p className="hash verify-hash">Hash do conteúdo (SHA-256): {result.contentHash}</p>
+          {!!result.signatures?.done && <a className="btn" style={{ alignSelf: 'flex-start' }} href={`/api/public/evidence-report/${result.code}`} target="_blank" rel="noreferrer"><FileSearch />Comprovante técnico de assinaturas (PDF)</a>}
           <LegalBasis />
           <p className="muted verify-note">Consulta realizada em {when(result.checkedAt)}. Por proteção de dados pessoais, CPF, endereço IP e e-mails dos signatários não são exibidos.</p>
         </>}
@@ -76,6 +79,18 @@ export default function VerifyDocumentPage() {
       <FileCheck />
     </div>
   </main>;
+}
+
+/** What kind of check was performed, in plain words: never "authentic" just because a record exists. */
+export function CheckKindNote({ kind }: { kind: NonNullable<DocumentVerification['checkKind']> }) {
+  const text: Record<typeof kind, string> = {
+    criptografica: 'Conferência criptográfica: hashes SHA-256 recalculados e evidências de cada assinatura validadas pela assinatura digital Ed25519 do servidor da plataforma. Não se trata de certificado ICP-Brasil nem de carimbo de tempo de autoridade certificadora.',
+    documental: 'Conferência documental: hashes SHA-256 do conteúdo e das assinaturas recalculados e conferidos com os registros.',
+    cadastral: 'Conferência cadastral: as assinaturas foram registradas antes do procedimento de evidências (novembro de 2026). Os hashes são recalculados a partir dos registros da plataforma, sem comprovante assinado pelo servidor.',
+    misto: 'Conferência mista: parte das assinaturas tem evidências validadas criptograficamente; as anteriores ao procedimento de evidências são conferidas pelos registros.',
+    falha: 'Falha: ao menos um registro de evidência não confere. O documento não deve ser utilizado até esclarecimento.'
+  };
+  return <p className="verify-kind" data-kind={kind}>{text[kind]}</p>;
 }
 
 /** Upload of a received PDF to compare it with the official files issued by the platform. */

@@ -19,7 +19,9 @@ const nextConfig: NextConfig = {
     '/api/minutes/*/pdf': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/minutes/*/send': ['./node_modules/pdfkit/js/data/**/*'],
     '/api/minutes/*/invitations': ['./node_modules/pdfkit/js/data/**/*'],
-    '/api/external-signatures/*': ['./node_modules/pdfkit/js/data/**/*']
+    '/api/external-signatures/*': ['./node_modules/pdfkit/js/data/**/*'],
+    // Comprovante técnico de assinaturas (evidence report).
+    '/api/public/evidence-report/*': ['./node_modules/pdfkit/js/data/**/*']
   },
   async headers() {
     return [{ source: '/assinar-externo/:path*', headers: [

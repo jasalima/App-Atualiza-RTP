@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { FileSignature, ShieldCheck } from 'lucide-react';
 import { route } from '../api';
 import { Notice, Skeleton, errorText } from '../ui';
+import { CONSENT_TEXT, CONSENT_VERSION } from '@/lib/legal';
 
 type View = { name: string; label: string; phone: string; verified: boolean; signed: boolean; expiresAt: string };
 export default function ExternalSignature() {
@@ -15,7 +16,7 @@ export default function ExternalSignature() {
   async function act(action: 'challenge' | 'verify' | 'sign', event?: FormEvent) {
     event?.preventDefault(); setBusy(true); setError('');
     try {
-      await route(endpoint, { method: 'POST', body: JSON.stringify({ action, cpf, code, accept }) });
+      await route(endpoint, { method: 'POST', body: JSON.stringify({ action, cpf, code, accept, ...(action === 'sign' ? { consentVersion: CONSENT_VERSION } : {}) }) });
       if (action === 'challenge') { setSent(true); setRetryAt(Date.now() + 60000); }
       if (action === 'verify' || action === 'sign') await load();
       if (action === 'verify') { setCpf(''); setCode(''); }
@@ -46,7 +47,7 @@ export default function ExternalSignature() {
           <iframe className="external-sign-document" title="Ata para leitura e assinatura" src={`/api${endpoint}?file=1`} />
           <form className="panel panel-pad stack" onSubmit={e => void act('sign', e)}>
             <label className="field">Confirme seu CPF<input required value={cpf} inputMode="numeric" maxLength={20} onChange={e => { setCpf(e.target.value); setAccept(false); }} /></label>
-            <label className="check"><input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} /><span>Li a ata, confirmo minha identidade e concordo em assinar eletronicamente. Serão registrados meu nome, CPF, data, hora, IP e a integridade do documento.</span></label>
+            <label className="check"><input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} /><span>{CONSENT_TEXT}</span></label>
             <button className="btn btn-go" disabled={busy || !accept}>{busy ? 'Registrando…' : 'Assinar ata'}</button>
           </form>
         </>}

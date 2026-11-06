@@ -6,9 +6,15 @@ import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { recordParallelSignature } from '@/lib/parallel-sign';
 import { assertSignerIdentity } from '@/lib/signature-identity';
 import { sameOrigin, travelError } from '@/lib/travel';
+import { signingSession } from '@/lib/signature-session';
+import { consentEvidence, evidenceStatements, maskCpfDigits, PROCEDURE_VERSION, type SignatureEvidence } from '@/lib/signature-evidence';
+import { isConsentVersion } from '@/lib/legal';
 export const runtime = 'nodejs';
 
-const input = z.object({ cpf: z.string().min(11).max(20), documentHash: z.string().regex(/^[a-f0-9]{64}$/), accept: z.literal(true, { message: 'Confirme a declaração para assinar.' }) });
+// consentVersion: the declaration shown on screen; pages opened before it existed send none and
+// are recorded with the wording they showed then.
+const input = z.object({ cpf: z.string().min(11).max(20), documentHash: z.string().regex(/^[a-f0-9]{64}$/), accept: z.literal(true, { message: 'Confirme a declaração para assinar.' }),
+  consentVersion: z.string().max(40).refine(isConsentVersion, 'Declaração desconhecida. Atualize a página.').optional() });
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status });
 
 // Electronic signature of the current signer. What is signed is the SHA-256 of the
@@ -23,6 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Atas (mode 'parallel'): every signer may sign at any time, in any order.
     const parallel = r.mode === 'parallel';
     if (!me || (parallel ? me.status !== 'pending' : access.current?.id !== me.id)) throw fail(me?.status === 'signed' ? 'Você já assinou este documento.' : 'Aguarde a sua vez: o documento segue a ordem de assinatura.', 409);
+    const auth = await signingSession();
     const cpf = await assertSignerIdentity(access.user.id, body.cpf);
 
     const source = await documentSource(String(r.project_id), r.source_kind as SignatureKind, String(r.source_id));
@@ -38,8 +45,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const code = finalHash.slice(0, 12).toUpperCase().replace(/(.{4})(?=.)/g, '$1-');
     // Every follow-up statement runs only if this signer's row really changed to signed (no double signing).
     const mine = sql`EXISTS(SELECT 1 FROM signature_signers WHERE id=${me.id}::uuid AND status='signed' AND signature_hash=${signatureHash})`;
+    // Evidence of this signature (procedure RTP-ASSINATURA-2), written in the same transaction.
+    const [identity] = await sql`SELECT verified_at FROM signer_identities WHERE auth_user_id=${access.user.id}`;
+    const evidence: SignatureEvidence = {
+      procedure: PROCEDURE_VERSION, event: 'signed',
+      document: { kind: String(r.source_kind), sourceId: String(r.source_id), label: String(r.label), documentHash: source.hash, version: source.version ?? null, publicCode: source.minutes ? String(source.minutes.public_code) : null },
+      request: { id, mode: String(r.mode ?? 'sequential') },
+      signer: { signerId: me.id, step: me.step, name: me.name, roleLabel: me.role_label, account: access.user.id, cpfMasked: maskCpfDigits(cpf) },
+      authentication: { method: 'conta_pessoal_cpf_confirmado', description: 'Login pessoal (e-mail e senha) com sessão recente; CPF informado conferido com o CPF vinculado à conta pela administração.', ...auth, identityConfirmedAt: identity?.verified_at ? new Date(String(identity.verified_at)).toISOString() : null },
+      consent: consentEvidence(body.consentVersion ?? 'DECL-2026-10-CONTA'),
+      network: { ip, userAgent }, signedAtUtc: signedAt, signatureHash
+    };
     if (parallel) {
-      const result = await recordParallelSignature({ requestId: id, signerId: me.id, userId: access.user.id, projectId: String(r.project_id), step: me.step, cpf, signedAt, ip, userAgent, documentHash: source.hash, signatureHash });
+      const result = await recordParallelSignature({ requestId: id, signerId: me.id, userId: access.user.id, projectId: String(r.project_id), step: me.step, cpf, signedAt, ip, userAgent, documentHash: source.hash, signatureHash, evidence });
       if (!result.recorded) throw fail('Assinatura já registrada ou solicitação alterada. Atualize a página.', 409);
       after(() => dispatchAfterSignature(id, 'signed').catch((error) => console.error('signature dispatch', id, error)));
       return Response.json({ signed: true, signedAt, signatureHash, documentHash: source.hash, completed: result.completed, verificationCode: null });
@@ -51,12 +69,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       sql`SELECT id FROM signature_requests WHERE id=${id}::uuid FOR UPDATE`,
       sql`UPDATE signature_signers SET status='signed',cpf=${cpf},signed_at=${signedAt}::timestamptz,ip=${ip},user_agent=${userAgent},document_hash=${source.hash},signature_hash=${signatureHash}
         WHERE id=${me.id}::uuid AND status='pending' AND ${unchanged} AND EXISTS(SELECT 1 FROM signature_requests WHERE id=${id}::uuid AND status='pending') RETURNING id`,
+      ...evidenceStatements(evidence, mine),
       next
         ? sql`UPDATE signature_signers SET status='pending' WHERE id=${next.id}::uuid AND status='waiting' AND ${mine}`
         : sql`UPDATE signature_requests SET status='completed',completed_at=now(),document_hash=${source.hash},verification_code=${code} WHERE id=${id}::uuid AND status='pending' AND ${mine}`,
       sql`INSERT INTO signer_profiles(auth_user_id,cpf) SELECT ${access.user.id},${cpf} WHERE ${mine} ON CONFLICT (auth_user_id) DO NOTHING`,
       sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) SELECT ${access.user.id},${r.project_id}::uuid,'sign','signature_request',${id},
-        jsonb_build_object('step',${me.step}::int,'documentHash',${source.hash}::text,'signatureHash',${signatureHash}::text,'ip',${ip}::text) WHERE ${mine}`
+        jsonb_build_object('step',${me.step}::int,'documentHash',${source.hash}::text,'signatureHash',${signatureHash}::text,'ip',${ip}::text,'procedure',${PROCEDURE_VERSION}::text) WHERE ${mine}`
     ]) as unknown as Array<Array<{ id: string }>>;
     if (!updated.length) throw fail('Assinatura já registrada ou solicitação alterada. Atualize a página.', 409);
     // Next signer (or, at the end, the archive and the requester) is served after the response.

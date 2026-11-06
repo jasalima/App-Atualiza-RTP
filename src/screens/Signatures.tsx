@@ -8,7 +8,8 @@ import { Drawer, Empty, Notice, PageHead, Pivot, ScopeContext, Skeleton, Tag, er
 import { useLive } from '../live';
 import { MinuteEditor, MinutesList } from './Minutes';
 import NotificationBell from '../NotificationBell';
-import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
+import { CheckKindNote } from './VerifyDocument';
+import { CONSENT_TEXT, CONSENT_VERSION, LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
 import qrcode from 'qrcode-generator';
 import { form26Signer, isCoordination } from '@/lib/travel-signers';
 
@@ -291,7 +292,7 @@ export function SignPage() {
   }
   async function sign(e: FormEvent) {
     e.preventDefault(); setSigning(true);
-    try { const res = await signatures.sign(r.id, cpf, reviewedHash); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    try { const res = await signatures.sign(r.id, cpf, reviewedHash, CONSENT_VERSION); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   async function reject() {
@@ -343,7 +344,7 @@ export function SignPage() {
           <h3 style={{ marginBottom: 0 }}><PenLine size={17} style={{ verticalAlign: '-3px', marginRight: 6 }} />Assinar eletronicamente</h3>
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Assinando como <b>{me!.name}</b>{me!.roleLabel ? `, ${me!.roleLabel}` : ''}.</p>
           <label className="field">CPF<input inputMode="numeric" autoComplete="off" value={cpf} onChange={(e) => setCpf(formatCpf(e.target.value))} placeholder="000.000.000-00" required disabled={signing || dirty} />{me!.cpfOnFile && <small>Use o mesmo CPF das assinaturas anteriores ({me!.cpfOnFile}).</small>}</label>
-          <label className="check"><input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} disabled={signing || dirty} /><span>Li o documento e declaro que as informações são verdadeiras. Concordo em assiná-lo eletronicamente, ficando registrados meu nome, CPF, data, hora e endereço IP.</span></label>
+          <label className="check"><input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} disabled={signing || dirty} /><span>{CONSENT_TEXT}</span></label>
           <button className="btn btn-go btn-block" disabled={signing || dirty || !accept || cpf.replace(/\D/g, '').length !== 11}>{signing ? 'Assinando…' : 'Assinar documento'}</button>
           {view.canEdit && !editing && <button type="button" className="btn btn-block" onClick={startEdit}><PenLine />Alterar ou inserir informações</button>}
           {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de assinar.</p>}
@@ -369,6 +370,8 @@ export function SignPage() {
             {doc.kind !== 'minutes' && <a className="btn btn-block" href={signatures.fileUrl(r.id, 'docx')}><Download />Baixar DOCX</a>}
             {doc.kind === 'minutes' && <a className="btn btn-block" href={`/verificar-documento/${doc.publicCode}`} target="_blank" rel="noreferrer"><ShieldCheck />Verificação de autenticidade</a>}
             {doc.kind !== 'minutes' && r.status === 'completed' && r.verificationCode && <button className="btn btn-block" onClick={() => navigate(`/verificar/${r.verificationCode}`)}><ShieldCheck />Comprovante de verificação</button>}
+            {(doc.kind === 'minutes' ? r.signers.some((s) => s.status === 'signed') : r.status === 'completed' && r.verificationCode) && <a className="btn btn-block" href={`/api/public/evidence-report/${doc.kind === 'minutes' ? doc.publicCode : r.verificationCode}`} target="_blank" rel="noreferrer"><FileSignature />Comprovante técnico de assinaturas</a>}
+            {view.manager && r.signers.some((s) => s.status === 'signed') && <a className="btn btn-block btn-quiet" href={`/api/signatures/${r.id}/evidence`}><Download />Exportar evidências (coordenação)</a>}
           </div>
         </div>
       </aside>
@@ -377,6 +380,23 @@ export function SignPage() {
 }
 
 /* Public verification -------------------------------------------------------------------------- */
+/** Compares a PDF received with the signed file archived by the platform; the file never leaves the device. */
+function LocalFileCheck({ expected }: { expected: string }) {
+  const [state, setState] = useState<{ name: string; ok: boolean; sha: string } | null>(null), [busy, setBusy] = useState(false);
+  async function check(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try { const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer()); const sha = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(''); setState({ name: file.name, ok: sha === expected, sha }); }
+    finally { setBusy(false); }
+  }
+  return <section className="stack" style={{ gap: 8 }}>
+    <h3 className="verify-h" style={{ margin: 0 }}>Conferir o arquivo PDF recebido</h3>
+    <p className="muted" style={{ margin: 0, fontSize: 13 }}>O hash SHA-256 é calculado no seu próprio aparelho e comparado com o da via assinada arquivada pela plataforma. O arquivo não é enviado.</p>
+    <label className="btn" style={{ alignSelf: 'flex-start' }}>{busy ? 'Calculando…' : 'Selecionar PDF'}<input type="file" accept="application/pdf" hidden onChange={(e) => void check(e.target.files?.[0])} /></label>
+    {state && (state.ok ? <Notice tone="ok" title="Arquivo idêntico à via assinada">“{state.name}” tem exatamente o mesmo hash da via arquivada.</Notice>
+      : <Notice tone="warn" title="Arquivo diferente da via arquivada">“{state.name}” não é byte a byte a via arquivada (hash {state.sha.slice(0, 16)}…). Pode ter sido alterado, salvo de novo ou ser outra via (por exemplo, baixada antes da última assinatura). Confira o conteúdo pelos dados acima.</Notice>)}
+  </section>;
+}
 export function VerifyPage() {
   const { code } = useParams(), navigate = useNavigate();
   const [input, setInput] = useState(code ?? ''), [result, setResult] = useState<VerifyResult | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -393,10 +413,20 @@ export function VerifyPage() {
         <button className="btn btn-primary" disabled={busy || input.replace(/[^0-9A-F]/gi, '').length !== 12}>Verificar</button>
       </form>
       {busy ? <Skeleton /> : error ? <Notice tone="crit">{error}</Notice> : result && <div className="stack" style={{ gap: 12 }}>
-        <Notice tone={result.valid ? 'ok' : 'warn'} title={result.valid ? 'Documento com assinaturas válidas' : 'Assinaturas sem validade'}>{result.valid ? `Concluído em ${when(result.completedAt)}.` : 'As assinaturas deste documento foram canceladas.'}</Notice>
-        <dl className="facts"><div><dt>Documento</dt><dd>{result.label}</dd></div><div><dt>Projeto</dt><dd>{result.project}</dd></div><div><dt>Código</dt><dd>{result.code}</dd></div><div><dt>Hash do documento</dt><dd className="hash" style={{ overflowWrap: 'anywhere' }}>{result.documentHash}</dd></div></dl>
-        <ol className="sign-steps">{result.signers.map((s) => <li key={s.step} data-status="signed"><span className="sign-step-n"><Check /></span><div><b>{s.name}</b><small>{s.roleLabel}</small><small>CPF {s.cpf}, em {when(s.signedAt)}</small><small className="hash" style={{ overflowWrap: 'anywhere' }}>{s.signatureHash}</small></div></li>)}</ol>
+        <Notice tone={result.valid ? 'ok' : result.checkKind === 'falha' || result.checks?.content === 'alterado' ? 'crit' : 'warn'} title={result.valid ? 'Registros de assinatura conferem' : result.status === 'cancelled' ? 'Assinaturas canceladas' : result.status === 'completed' ? 'Falha de integridade' : 'Assinaturas não concluídas'}>
+          {result.valid ? `Todas as assinaturas concluídas em ${when(result.completedAt)}.` : result.status === 'cancelled' ? `As assinaturas deste documento foram canceladas${result.closedReason ? `: ${result.closedReason}` : '.'}` : result.status === 'completed' ? 'Algum registro deste documento não confere. Não o utilize e comunique a coordenação do projeto.' : 'Este documento ainda não tem todas as assinaturas.'}
+        </Notice>
+        <dl className="facts"><div><dt>Documento</dt><dd>{result.label}</dd></div><div><dt>Projeto</dt><dd>{result.project}</dd></div><div><dt>Código</dt><dd>{result.code}</dd></div><div><dt>Hash do conteúdo assinado (SHA-256)</dt><dd className="hash" style={{ overflowWrap: 'anywhere' }}>{result.documentHash}</dd></div></dl>
+        <ol className="sign-steps">{result.signers.map((s) => <li key={s.step} data-status="signed"><span className="sign-step-n"><Check /></span><div><b>{s.name}</b><small>{s.roleLabel}</small><small>CPF {s.cpf}, em {when(s.signedAt)} (horário de Brasília)</small><small className="hash" style={{ overflowWrap: 'anywhere' }}>{s.signatureHash}</small>{s.evidence && <small className="verify-evidence" data-level={s.evidence.level}>{s.evidence.text}</small>}</div></li>)}</ol>
+        {result.checks && <ul className="verify-checks">
+          <li data-ok={result.checks.records}>{result.checks.records ? <Check /> : <X />}Hash de cada assinatura recalculado a partir do registro</li>
+          <li data-ok={result.checks.evidence}>{result.checks.evidence ? <Check /> : <X />}Evidências de assinatura íntegras e encadeadas</li>
+          <li data-ok={result.checks.content !== 'alterado'}>{result.checks.content === 'alterado' ? <X /> : <Check />}{result.checks.content === 'confere' ? 'Conteúdo atual do documento confere com o hash assinado' : result.checks.content === 'alterado' ? 'O conteúdo atual do documento difere do que foi assinado' : 'Documento de origem indisponível: conferidos apenas os registros'}</li>
+        </ul>}
+        {result.checkKind && <CheckKindNote kind={result.checkKind} />}
+        {result.fileSha256 && <LocalFileCheck expected={result.fileSha256} />}
         <LegalBasis />
+        <p className="muted" style={{ fontSize: 12.5 }}>Consulta realizada em {when(result.checkedAt ?? null)}. Por proteção de dados pessoais, o CPF aparece mascarado e o endereço IP não é exibido.</p>
       </div>}
     </div>
   </main>;

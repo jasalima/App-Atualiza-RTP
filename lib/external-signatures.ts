@@ -6,6 +6,8 @@ import { normalizeCpf } from './cpf';
 import { sealCredential, openCredential } from '../server/services/travel-credentials';
 import { moduleSender } from './whatsapp-connections';
 import { recordParallelSignature } from './parallel-sign';
+import { consentEvidence, maskCpfDigits, PROCEDURE_VERSION } from './signature-evidence';
+import type { ConsentVersion } from './legal';
 
 const fail = (message: string, status = 403) => Object.assign(new Error(message), { status });
 export const guestPhone = (value: string) => value.replace(/\D/g, '');
@@ -46,7 +48,7 @@ export async function renewExpiredGuestInvitations(requestId: string) {
 }
 export async function externalAccess(token: string) {
   if (!/^[\w-]{43}$/.test(token)) throw fail('Link inválido ou expirado.', 404);
-  const [row] = await sql`SELECT e.*,s.request_id,s.auth_user_id,s.name,s.step,s.status AS signer_status,r.project_id,r.source_id,r.label,r.status AS request_status,r.created_by
+  const [row] = await sql`SELECT e.*,s.request_id,s.auth_user_id,s.name,s.role_label,s.step,s.status AS signer_status,r.project_id,r.source_id,r.label,r.status AS request_status,r.created_by
     FROM external_signature_access e JOIN signature_signers s ON s.id=e.signer_id JOIN signature_requests r ON r.id=s.request_id
     JOIN meeting_minute_versions v ON v.id=r.source_id JOIN meeting_minutes m ON m.id=v.minute_id
     WHERE e.token_hash=${sha256(token)} AND r.source_kind='minutes' AND r.mode='parallel' AND v.status='active' AND m.deleted_at IS NULL AND m.status<>'cancelled'`;
@@ -90,14 +92,23 @@ export async function verifyExternalChallenge(token: string, a: GuestAccess, cpf
   if (!verified) throw fail('Código já utilizado. Solicite outro código.');
   return proof;
 }
-export async function signExternal(request: Request, a: GuestAccess, input: string) {
+export async function signExternal(request: Request, a: GuestAccess, input: string, consentVersion: ConsentVersion = 'DECL-2026-10-EXTERNO') {
   const cpf = await guestIdentity(a, input);
   if (!hasExternalProof(request, a)) throw fail('Confirme o código recebido no WhatsApp antes de assinar.');
   const source = await documentSource(String(a.project_id), 'minutes', String(a.source_id));
   const signedAt = new Date().toISOString(), ip = clientIp(request), requestId = String(a.request_id), userId = String(a.auth_user_id), step = Number(a.step);
   const signatureHash = signatureHashOf({ documentHash: source.hash, requestId, userId, step, cpf, signedAt, ip });
+  const userAgent = (request.headers.get('user-agent') ?? '').slice(0, 300);
   const result = await recordParallelSignature({ requestId, signerId: String(a.signer_id), userId, projectId: String(a.project_id), step, cpf, signedAt, ip,
-    userAgent: (request.headers.get('user-agent') ?? '').slice(0, 300), documentHash: source.hash, signatureHash, external: true });
+    userAgent, documentHash: source.hash, signatureHash, external: true,
+    evidence: {
+      procedure: PROCEDURE_VERSION, event: 'signed',
+      document: { kind: 'minutes', sourceId: String(a.source_id), label: String(a.label), documentHash: source.hash, version: source.version ?? null, publicCode: source.minutes ? String(source.minutes.public_code) : null },
+      request: { id: requestId, mode: 'parallel' },
+      signer: { signerId: String(a.signer_id), step, name: String(a.name), roleLabel: String(a.role_label ?? ''), account: userId, cpfMasked: maskCpfDigits(cpf) },
+      authentication: { method: 'link_individual_cpf_codigo_whatsapp', description: 'Link individual com validade; CPF conferido com o cadastrado pela coordenação; código de uso único (6 dígitos, 5 minutos, até 5 tentativas) enviado ao WhatsApp cadastrado.', otpVerifiedAt: a.verified_at ? new Date(String(a.verified_at)).toISOString() : null, phoneEnding: String(a.phone).slice(-4) },
+      consent: consentEvidence(consentVersion), network: { ip, userAgent }, signedAtUtc: signedAt, signatureHash
+    } });
   if (!result.recorded) throw fail('A assinatura já foi registrada ou a solicitação mudou. Atualize a página.', 409);
   return { signed: true, completed: result.completed, signedAt };
 }

@@ -20,6 +20,7 @@ vi.mock('../lib/auth', () => ({ auth: { getSession: async () => ({ data: mocks.u
 vi.mock('../lib/storage', () => ({ readPrivateObject: vi.fn(), signedDownloadUrl: async () => 'https://storage.example/photo', signedUploadUrl: vi.fn(), headPrivateObject: vi.fn() }));
 
 import { normalizeCpf, stableJson, documentSource, assertUnsigned } from '../lib/signatures';
+import { signatureHashOf } from '../lib/hash';
 import { requireProject } from '../lib/authorize';
 import { POST as sign } from '../app/api/signatures/[id]/sign/route';
 import { POST as reject } from '../app/api/signatures/[id]/reject/route';
@@ -95,7 +96,12 @@ describe('signing', () => {
     expect(body.completed).toBe(false);
     expect(body.signatureHash).toMatch(/^[0-9a-f]{64}$/);
     const [statements] = mocks.transaction.mock.calls[0];
-    expect(statements).toHaveLength(5);
+    expect(statements).toHaveLength(6); // + the evidence record (procedure RTP-ASSINATURA-2)
+    const evidence = mocks.calls.find((c) => /INSERT INTO signature_evidence\(/.test(c.q))!;
+    const payload = JSON.parse(String(evidence.values.find((v) => typeof v === 'string' && v.startsWith('{'))));
+    expect(payload).toMatchObject({ procedure: 'RTP-ASSINATURA-2', event: 'signed', signer: { step: 1, cpfMasked: '***.982.247-**' }, authentication: { method: 'conta_pessoal_cpf_confirmado' }, network: { ip: '200.10.20.30' } });
+    expect(payload.consent.version).toBe('DECL-2026-10-CONTA'); // page opened before the new declaration
+    expect(JSON.stringify(payload)).not.toContain('52998224725');
     const update = mocks.calls.find((c) => /UPDATE signature_signers SET status='signed'/.test(c.q))!;
     expect(update.values).toContain('52998224725');
     expect(update.values).toContain('200.10.20.30');
@@ -155,11 +161,16 @@ describe('editing lock and public verification', () => {
   it('normalizes the code and masks CPFs', async () => {
     mocks.handlers.splice(0, mocks.handlers.length,
       [/FROM signature_requests r JOIN projects/, (v) => (v[0] === 'ABCD-1234-EF56' ? [{ id: requestId, label: 'Doc', status: 'completed', completed_at: '2026-11-04T12:00:00Z', document_hash: 'h', title: 'Projeto' }] : [])],
-      [/FROM signature_signers WHERE request_id/, () => [{ step: 1, name: 'Eliane', role_label: 'Assessora', cpf: '52998224725', signed_at: '2026-11-04T12:00:00Z', signature_hash: 'h1' }]]);
+      [/FROM signature_signers WHERE request_id/, () => [{ id: 'signer-1', step: 1, auth_user_id: 'user-1', name: 'Eliane', role_label: 'Assessora', cpf: '52998224725', signed_at: '2026-11-04T12:00:00.000Z', ip: '200.10.20.30', document_hash: 'h',
+        signature_hash: signatureHashOf({ documentHash: 'h', requestId, step: 1, userId: 'user-1', cpf: '52998224725', signedAt: '2026-11-04T12:00:00.000Z', ip: '200.10.20.30' }) }]]);
     const res = await verify(new Request('https://app.example'), { params: Promise.resolve({ code: 'abcd1234ef56' }) });
     const body = await res.json();
     expect(body.valid).toBe(true);
+    // Signed before the evidence procedure: the check is said to be only of the registry.
+    expect(body.checkKind).toBe('cadastral');
+    expect(body.checks.records).toBe(true);
     expect(body.signers[0].cpf).toBe('***.982.247-**');
+    expect(JSON.stringify(body)).not.toContain('200.10.20.30');
     expect(JSON.stringify(body)).not.toContain('52998224725');
   });
 });

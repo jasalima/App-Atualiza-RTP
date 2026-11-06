@@ -4,6 +4,7 @@ import { externalAccess, hasExternalProof, proofCookieName, sendExternalChalleng
 import { officialPdf } from '@/lib/minutes-core';
 import { dispatchAfterSignature } from '@/lib/signature-dispatch';
 import { rateLimit } from '@/lib/rate-limit';
+import { isConsentVersion } from '@/lib/legal';
 import { sameOrigin, travelError } from '@/lib/travel';
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ token: string }> };
@@ -28,14 +29,14 @@ export async function POST(request: Request, { params }: Context) {
     const body = z.discriminatedUnion('action', [
       z.object({ action: z.literal('challenge'), cpf: z.string().max(20) }),
       z.object({ action: z.literal('verify'), cpf: z.string().max(20), code: z.string().regex(/^\d{6}$/) }),
-      z.object({ action: z.literal('sign'), cpf: z.string().max(20), accept: z.literal(true) })
+      z.object({ action: z.literal('sign'), cpf: z.string().max(20), accept: z.literal(true), consentVersion: z.string().max(40).refine(isConsentVersion).optional() })
     ]).parse(await request.json());
     if (body.action === 'challenge') return Response.json(await sendExternalChallenge(token, a, body.cpf), { headers });
     if (body.action === 'verify') {
       const proof = await verifyExternalChallenge(token, a, body.cpf, body.code);
       return Response.json({ verified: true }, { headers: { ...headers, 'Set-Cookie': `${proofCookieName(a)}=${proof}; HttpOnly; SameSite=Strict; Path=/api/external-signatures; Max-Age=600${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}` } });
     }
-    const result = await signExternal(request, a, body.cpf);
+    const result = await signExternal(request, a, body.cpf, body.consentVersion);
     after(() => dispatchAfterSignature(String(a.request_id), 'signed').catch(() => console.error('Falha ao compartilhar ata após assinatura externa.')));
     return Response.json(result, { headers });
   } catch (error) { return travelError(error); }

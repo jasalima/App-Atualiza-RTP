@@ -1,5 +1,6 @@
 import { sql } from './db';
 import { APP_URL, sha256, signatureHashOf, stableJson } from './hash';
+import { checkEvidence, evidenceVerdict } from './signature-evidence';
 import { putPrivateObject, readPrivateObject } from './storage';
 import { displayStatus, minuteNumber, STATUS_LABEL, type MinuteContent, type MinuteStatus, type RichNode } from './minutes-model';
 import { imageKey, minutesPdf, signatureId, type MinuteSignature } from '../server/services/minutes-pdf';
@@ -68,6 +69,13 @@ export const minuteFolder = (projectId: string, minuteId: string) => `${projectI
 
 /** Official PDF of a version in its current signature state: stored once, served identically afterwards. */
 export const RENDER_LAYOUT = 'L3';
+export function checkKindOf(levels: string[]) {
+  if (!levels.length) return 'documental' as const;
+  if (levels.includes('falha')) return 'falha' as const;
+  if (levels.every((l) => l === 'criptografica')) return 'criptografica' as const;
+  if (levels.every((l) => l === 'cadastral')) return 'cadastral' as const;
+  return 'misto' as const;
+}
 export async function officialPdf(versionId: string) {
   const v = await minuteVersion(versionId);
   const { request, signers } = await versionSignatures(versionId);
@@ -111,14 +119,19 @@ export async function verifyMinute(code: string) {
   const v = row as unknown as VersionRow & { subject: string; meeting_date: Date | string | null; latest: number };
   const contentOk = versionHash(v.id, v.content) === v.content_hash;
   const { request, signers } = await versionSignatures(v.id);
+  // Evidence (procedure RTP-ASSINATURA-2): hashes, chain and server signature of each signature.
+  const evidence = request ? await checkEvidence(String(request.id)) : [];
   const people = signers.map((s) => {
     const signed = s.status === 'signed';
     const valid = !signed || (s.document_hash === v.content_hash && !!s.cpf && s.signature_hash === signatureHashOf({ documentHash: v.content_hash, requestId: String(request!.id), step: s.step, userId: s.auth_user_id, cpf: String(s.cpf), signedAt: iso(s.signed_at), ip: String(s.ip ?? '') }));
-    return { name: s.name, roleLabel: s.role_label, status: signed ? 'signed' : s.status === 'rejected' ? 'rejected' : 'pending', signedAt: signed ? iso(s.signed_at) : null, signatureId: signed ? signatureId(String(s.signature_hash)) : null, valid };
+    const proof = signed ? evidenceVerdict(evidence.find((e) => e.event === 'signed' && e.signerId === String(s.id)), { signatureHash: s.signature_hash ? String(s.signature_hash) : null, documentHash: v.content_hash }) : null;
+    return { name: s.name, roleLabel: s.role_label, status: signed ? 'signed' : s.status === 'rejected' ? 'rejected' : 'pending', signedAt: signed ? iso(s.signed_at) : null, signatureId: signed ? signatureId(String(s.signature_hash)) : null, valid: valid && proof?.level !== 'falha', evidence: proof };
   });
+  // Events of the request that do not belong to a signer (completion, cancellation) are checked too.
+  const eventsOk = evidence.filter((e) => e.event !== 'signed').every((e) => e.payloadHashOk && e.chainOk && e.signature !== 'invalida');
   const requestOk = !request || !request.document_hash || request.document_hash === v.content_hash;
   const done = people.filter((p) => p.status === 'signed').length, total = people.length;
-  const result: VerificationResult = !contentOk || !requestOk || people.some((p) => !p.valid) ? 'integrity_failure'
+  const result: VerificationResult = !contentOk || !requestOk || !eventsOk || people.some((p) => !p.valid) ? 'integrity_failure'
     : v.status === 'cancelled' || v.minute_status === 'cancelled' ? 'cancelled'
     : v.status === 'superseded' ? 'superseded'
     : request?.status === 'completed' ? 'signed' : done ? 'partial' : 'unsigned';
@@ -127,7 +140,9 @@ export async function verifyMinute(code: string) {
     result, text: RESULT_TEXT[result], code: normalized, type: 'Ata de Reunião', number: minuteNumber(v.seq, v.year), project: v.project_title, subject: v.content.subject,
     meetingDate: v.content.meetingDate, issuedAt: iso(v.issued_at), version: v.version, latestVersion: Number(v.latest), situation: STATUS_LABEL[status],
     signatures: { done, total }, signers: people.map(({ valid: _v, ...p }) => p), contentHash: v.content_hash, checkedAt: new Date().toISOString(),
-    checks: { content: contentOk, signatures: people.every((p) => p.valid) && requestOk }
+    checks: { content: contentOk, signatures: people.every((p) => p.valid) && requestOk, evidence: eventsOk && people.every((p) => p.evidence?.level !== 'falha') },
+    // Kind of check performed: cryptographic (server-signed evidence), documental (hashes) or registry only.
+    checkKind: checkKindOf(people.flatMap((p) => (p.evidence ? [p.evidence.level] : [])))
   };
 }
 
