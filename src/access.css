@@ -81,3 +81,58 @@
 .view-only-banner b{font-size:14.5px}
 .view-only-banner span{font-size:13px;color:var(--ink-2)}
 @media (max-width:600px){.view-only-banner{flex-wrap:wrap}.view-only-banner .btn{width:100%}}
+
+/* Assinatura no celular ------------------------------------------------------ */
+.sign-banner .sign-banner-actions{flex:none;flex-direction:row;gap:8px;flex-wrap:wrap}
+#documento{scroll-margin-top:16px}
+.sign-list-label{display:none}
+.sign-list td small{display:block}
+.sign-dock{display:none}
+@media (max-width:860px){
+  /* iOS amplia a tela ao tocar em campos com fonte menor que 16px. */
+  input,select,textarea{font-size:16px}
+  .sign-banner .sign-banner-actions{width:100%;flex-direction:column}
+  .sign-banner .sign-banner-actions .btn{width:100%;height:44px}
+  .sign-card .btn{height:46px}
+  .sign-card input{height:46px;font-size:18px;letter-spacing:.04em}
+  .sign-card .check{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--ground)}
+  .sign-card .check:has(input:checked){border-color:var(--pivot);background:var(--pivot-wash)}
+  .check{grid-template-columns:24px minmax(0,1fr)}
+  .check input{width:22px;height:22px}
+  /* Barra fixa: o botão de assinar fica sempre ao alcance do polegar. */
+  .sign-dock{display:flex;align-items:center;gap:12px;position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));z-index:54;padding:10px 16px;background:var(--sheet);border-top:2px solid var(--pivot);box-shadow:0 -8px 24px rgba(18,48,58,.14)}
+  .signer-shell .sign-dock{bottom:0;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+  .sign-dock div{flex:1;display:flex;flex-direction:column;min-width:0}
+  .sign-dock b{font-size:14.5px;color:#1f5a38}
+  .sign-dock small{font-size:12.5px;color:var(--ink-2)}
+  .sign-dock .btn{height:46px;padding:0 20px}
+  .page:has(.sign-dock){padding-bottom:calc(170px + env(safe-area-inset-bottom))}
+  .signer-shell .page{padding:20px 16px calc(40px + env(safe-area-inset-bottom))}
+  .signer-shell .page:has(.sign-dock){padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+  /* Minhas assinaturas: cartões em vez de tabela rolando para o lado. */
+  .sign-list thead{display:none}
+  .sign-list tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:14px 16px;border-bottom:1px solid var(--line-soft)}
+  .sign-list tr:last-child{border-bottom:0}
+  .sign-list td{border:0;padding:0!important}
+  .sign-list td:first-child{grid-column:1/-1}
+  .sign-list td:nth-child(2),.sign-list td:nth-child(3){grid-column:auto}
+  .sign-list td:nth-child(4){grid-column:1/-1;color:var(--mute);font-size:12.5px}
+  .sign-list td:last-child{grid-column:1/-1}
+  .sign-list td:last-child .btn{width:100%;height:44px;font-size:15px}
+  .sign-list-label{display:inline}
+}
+@media (max-width:600px){
+  .paper{padding:20px 14px}
+  .paper-trip col:first-child{width:6.6em!important}
+  .paper-trip tbody td:first-child:not([colspan]){white-space:nowrap;overflow-wrap:normal}
+  .paper-table{font-size:13px}
+  .signer-bar{gap:8px}
+  .signer-brand small,.signer-label{display:none}
+  .signer-bar .btn-sm{width:36px;height:36px;padding:0}
+  .signer-bar .btn-sm svg{width:18px;height:18px}
+}
+/* Painéis laterais no celular: ação principal em cima, botões na largura toda. */
+@media (max-width:600px){
+  .drawer .form-foot{flex-direction:column-reverse;align-items:stretch}
+  .drawer .form-foot .btn{width:100%;height:44px}
+}

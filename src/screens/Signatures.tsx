@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, Download, ExternalLink, FileSignature, LogOut, PenLine, Send, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, Check, CircleHelp, Copy, Download, ExternalLink, FileSignature, LogOut, PenLine, Send, ShieldCheck, X } from 'lucide-react';
 import { scholars as scholarsApi, signatures, users } from '../api';
 import type { User, Project, MySignature, ReportContent, SignatureRequest, SignatureSigner, SignerCandidate, SigningView, TravelReport, VerifyResult } from '../types';
 import { PhotoManager, TravelFields } from '../TravelFields';
@@ -167,13 +167,13 @@ export function MySignatures() {
     <PageHead title="Minhas assinaturas" description="Documentos enviados para você assinar eletronicamente. Abra, confira e assine sem baixar nada." />
     {error ? <Notice tone="crit">{error}</Notice> : !list ? <Skeleton /> : !list.length ? <div className="panel"><Empty title="Nada para assinar">Quando a coordenação enviar um documento para sua assinatura, ele aparece aqui.</Empty></div> : <div className="stack">
       {pending.length > 0 && <Notice tone="warn" title={pending.length === 1 ? '1 documento aguarda sua assinatura' : `${pending.length} documentos aguardam sua assinatura`} />}
-      <div className="panel"><div className="table-wrap"><table className="ledger">
+      <div className="panel"><div className="table-wrap"><table className="ledger sign-list">
         <thead><tr><th>Documento</th><th>Sua assinatura</th><th>Situação</th><th>Enviado</th><th aria-label="Ações" /></tr></thead>
         <tbody>{list.map((r) => { const [text, tone] = signerText[r.myStatus]; return <tr key={r.id}>
           <td><b>{r.label}</b><small>{r.projectTitle}</small></td>
           <td><Tag tone={r.status === 'pending' && r.myStatus === 'waiting' ? 'mute' : tone}>{r.myStatus === 'waiting' ? 'Aguardando a vez' : text}</Tag></td>
           <td><Tag tone={requestTone[r.status]}>{requestText[r.status]}</Tag></td>
-          <td className="num">{fmt(r.createdAt)}</td>
+          <td className="num"><span className="sign-list-label">Enviado em </span>{fmt(r.createdAt)}</td>
           <td><NavLink className={r.myStatus === 'pending' && r.status === 'pending' ? 'btn btn-primary btn-sm' : 'btn btn-sm'} to={`/assinar/${r.id}`}>{r.myStatus === 'pending' && r.status === 'pending' ? 'Assinar' : 'Abrir'}</NavLink></td>
         </tr>; })}</tbody>
       </table></div></div>
@@ -237,22 +237,35 @@ export function SignPage() {
   const [cpf, setCpf] = useState(''), [accept, setAccept] = useState(false), [signing, setSigning] = useState(false), [result, setResult] = useState<{ completed: boolean; code: string | null } | null>(null);
   const load = useCallback(() => signatures.get(id!).then((v) => { setView(v); setError(''); }, (e) => setError(errorText(e))), [id]);
   useEffect(() => { void load(); }, [load]);
+  // Phones: the bottom "Assinar" bar disappears once the signing form itself is on screen.
+  const [formInView, setFormInView] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById('assinar');
+    if (!el || typeof IntersectionObserver === 'undefined') { setFormInView(false); return; }
+    const io = new IntersectionObserver(([e]) => setFormInView(e.isIntersecting), { rootMargin: '0px 0px -60px 0px' });
+    io.observe(el); return () => io.disconnect();
+  }, [view, editing, result]);
   if (error) return <div className="stack"><Notice tone="crit" title="Não foi possível abrir o documento">{error}</Notice><div><NavLink className="btn" to="/assinaturas">Minhas assinaturas</NavLink></div></div>;
   if (!view) return <Skeleton />;
   const r = view.request, doc = view.document, me = view.me, reviewedHash = view.documentHash, parallel = (view.mode ?? r.mode) === 'parallel';
   const dirty = editing && draft !== null && JSON.stringify(draft) !== JSON.stringify(doc.kind === 'travel' ? doc.report : doc.kind === 'rtp' ? doc.content.sections : null);
-  function startEdit() { if (doc.kind === 'minutes') return; setAccept(false); setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); }
+  const toDocument = () => requestAnimationFrame(() => document.getElementById('documento')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  function goToSign() {
+    document.getElementById('assinar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    (document.querySelector('#assinar input') as HTMLInputElement | null)?.focus({ preventScroll: true });
+  }
+  function startEdit() { if (doc.kind === 'minutes') return; setAccept(false); setDraft(doc.kind === 'travel' ? { ...doc.report } : { ...doc.content.sections }); setEditing(true); toDocument(); }
   async function save() {
     setSaving(true);
     try {
       if (doc.kind === 'travel') { const t = draft as TravelReport; await signatures.saveDocument(r.id, { origin: t.origin, destination: t.destination, departureDate: t.departureDate || null, returnDate: t.returnDate || null, paymentDate: t.paymentDate || null, objective: t.objective, entries: t.entries }); }
       else await signatures.saveDocument(r.id, { sections: draft });
-      toast('Alterações salvas no documento. Confira a versão atual antes de assinar.'); setAccept(false); setEditing(false); setDraft(null); await load();
+      toast('Alterações salvas no documento. Confira a versão atual antes de assinar.'); setAccept(false); setEditing(false); setDraft(null); await load(); toDocument();
     } catch (e) { toast(errorText(e), 'crit'); } finally { setSaving(false); }
   }
   async function sign(e: FormEvent) {
     e.preventDefault(); setSigning(true);
-    try { const res = await signatures.sign(r.id, cpf, reviewedHash); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); }
+    try { const res = await signatures.sign(r.id, cpf, reviewedHash); setResult({ completed: res.completed, code: res.verificationCode }); setCpf(''); setAccept(false); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   async function reject() {
@@ -268,8 +281,9 @@ export function SignPage() {
       <div><h1>{doc.kind === 'travel' ? 'Relatório de viagem' : doc.kind === 'minutes' ? doc.number : `RTP ${doc.number}`}</h1><p>{r.label}. {view.projectTitle}</p></div>
       <div className="head-actions"><Tag tone={requestTone[r.status]}>{requestText[r.status]}</Tag></div>
     </div>
-    {result && <div style={{ marginBottom: 16 }}><Notice tone="ok" title="Assinatura registrada">{result.completed ? (doc.kind === 'minutes' ? <>Todas as assinaturas foram concluídas. A ata assinada pode ser conferida pelo código <b>{doc.publicCode}</b>.</> : <>Todas as assinaturas foram concluídas. Código de verificação: <b>{result.code}</b>.</>) : parallel ? 'Sua assinatura foi incluída na ata. Os demais participantes continuam podendo assinar.' : 'O documento segue agora para a próxima pessoa da ordem de assinatura.'}</Notice></div>}
-    {view.canSign && !result && <div className="sign-banner" role="status"><PenLine /><div><b>Sua assinatura está pendente</b><span>Leia o documento e assine com o seu CPF. {parallel ? 'Os participantes assinam em qualquer ordem.' : 'É a sua vez na ordem de assinatura.'}</span></div><a className="btn btn-go" href="#assinar" onClick={(e) => { e.preventDefault(); document.getElementById('assinar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); (document.querySelector('#assinar input') as HTMLInputElement | null)?.focus({ preventScroll: true }); }}>Assinar agora</a></div>}
+    {result && <div style={{ marginBottom: 16 }}><Notice tone="ok" title="Assinatura registrada">{result.completed ? (doc.kind === 'minutes' ? <>Todas as assinaturas foram concluídas. A ata assinada pode ser conferida pelo código <b>{doc.publicCode}</b>.</> : <>Todas as assinaturas foram concluídas. Código de verificação: <b>{result.code}</b><a className="btn btn-go btn-block" style={{ marginTop: 10 }} href={signatures.fileUrl(r.id, 'pdf')} target="_blank" rel="noreferrer"><Download />Baixar PDF assinado</a></>) : parallel ? 'Sua assinatura foi incluída na ata. Os demais participantes continuam podendo assinar.' : 'O documento segue agora para a próxima pessoa da ordem de assinatura.'}</Notice></div>}
+    {view.canSign && !result && <div className="sign-banner" role="status"><PenLine /><div><b>Sua assinatura está pendente</b><span>Leia o documento e assine com o seu CPF. {parallel ? 'Os participantes assinam em qualquer ordem.' : 'É a sua vez na ordem de assinatura.'}</span></div><div className="sign-banner-actions">{view.canEdit && !editing && doc.kind === 'travel' && <button type="button" className="btn" onClick={startEdit}><PenLine />Alterar informações</button>}<a className="btn btn-go" href="#assinar" onClick={(e) => { e.preventDefault(); goToSign(); }}>Assinar agora</a></div></div>}
+    {view.canSign && !result && !editing && !formInView && <div className="sign-dock" role="region" aria-label="Assinatura pendente"><div><b>Sua assinatura está pendente</b><small>Leia o documento e assine com seu CPF.</small></div><button type="button" className="btn btn-go" onClick={goToSign}><PenLine />Assinar</button></div>}
     {!me && view.manager && r.status === 'pending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Você está acompanhando este documento">Sua assinatura não foi solicitada nele. Os signatários estão listados ao lado.</Notice></div>}
     {r.status === 'rejected' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Assinatura recusada">{r.closedReason}</Notice></div>}
     {r.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="mute" title="Solicitação cancelada pela coordenação">{r.closedReason}</Notice></div>}
@@ -277,7 +291,7 @@ export function SignPage() {
     {doc.kind === 'rtp' && view.canEdit && !editing && <div className="rtp-review-action"><div><b>Revise o RTP antes de assinar</b><p>Você pode completar os resultados e corrigir as informações. Depois, salve e confira a versão que será assinada.</p></div><button className="btn btn-primary" onClick={startEdit}><PenLine />Revisar e editar RTP</button></div>}
 
     <div className="split">
-      <div className="stack">
+      <div className="stack" id="documento">
         {editing && draft ? <>
           {doc.kind === 'travel' ? <>
             <TravelFields r={draft as TravelReport} set={(p) => setDraft({ ...(draft as TravelReport), ...p })} locked={saving} />
@@ -368,8 +382,8 @@ export function SignerShell({ user, logout }: { user: User; logout: () => void }
       {projects.length > 1 && <select className="signer-project" value={project?.id ?? ''} onChange={(e) => setProjectId(e.target.value)} aria-label="Projeto">{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
       <NotificationBell />
       <span className="signer-user">{user.name}</span>
-      <NavLink className="btn btn-sm" to="/ajuda">Manual e ajuda</NavLink>
-      <button className="btn btn-sm" onClick={logout}><LogOut />Sair</button>
+      <NavLink className="btn btn-sm" to="/ajuda" aria-label="Manual e ajuda" title="Manual e ajuda"><CircleHelp /><span className="signer-label">Manual e ajuda</span></NavLink>
+      <button className="btn btn-sm" onClick={logout} aria-label="Sair" title="Sair"><LogOut /><span className="signer-label">Sair</span></button>
     </header>
     <main className="page">
       <ScopeContext.Provider value={scope as never}>
