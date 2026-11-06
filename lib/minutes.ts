@@ -48,7 +48,9 @@ const optTime = z.string().regex(/^\d{2}:\d{2}$/).nullable().or(z.literal('').tr
 const participant = z.object({
   scholarId: z.string().uuid().nullable(), authUserId: z.string().min(1).max(80).nullable(), name: z.string().trim().min(1).max(200), institution: z.string().trim().max(200),
   role: z.string().trim().max(200), email: z.string().trim().max(200), cpf: z.string().max(20).default(''), phone: z.string().max(35).default(''), attendance: z.enum(['present', 'absent', 'justified', 'guest']), signs: z.boolean()
-}).refine((p) => !p.signs || ((p.attendance === 'present' || p.attendance === 'guest') && (!!p.authUserId || (!p.scholarId && p.attendance === 'guest' && !!normalizeCpf(p.cpf) && /^\d{12,15}$/.test(guestPhone(p.phone))))), { message: 'Para assinar: membro presente com conta, ou convidado externo com CPF válido e WhatsApp com DDI e DDD.' });
+  // A member without an account may be marked to sign: external members sign by the public link
+  // (their CPF and WhatsApp are checked against the record when the ata is sent).
+}).refine((p) => !p.signs || ((p.attendance === 'present' || p.attendance === 'guest') && (!!p.authUserId || !!p.scholarId || (p.attendance === 'guest' && !!normalizeCpf(p.cpf) && /^\d{12,15}$/.test(guestPhone(p.phone))))), { message: 'Para assinar: membro presente, ou convidado externo com CPF válido e WhatsApp com DDI e DDD.' });
 export const draftInput = z.object({
   title: z.string().trim().min(1).max(200), subject: z.string().trim().max(400), meetingDate: optDate, startsAt: optTime, endsAt: optTime,
   modality: z.enum(['online', 'presencial', 'hibrida']), location: z.string().trim().max(300), platform: z.string().trim().max(120), chairedBy: z.string().trim().max(200), draftedBy: z.string().trim().max(200),
@@ -108,21 +110,26 @@ export async function assignNumber(id: string, projectId: string, userId: string
 /** People who may attend: members of the project and accounts with access, with the institution last used. */
 export async function participantCandidates(projectId: string) {
   const [scholars, accounts, used] = await Promise.all([
-    sql`SELECT id,full_name,role_area,email,status,auth_user_id FROM scholars WHERE project_id=${projectId}::uuid AND deleted_at IS NULL ORDER BY full_name`,
+    sql`SELECT id,full_name,role_area,email,status,auth_user_id,affiliation,cpf,phone FROM scholars WHERE project_id=${projectId}::uuid AND deleted_at IS NULL ORDER BY full_name`,
     signerCandidates(projectId),
     sql`SELECT DISTINCT ON (coalesce(p.scholar_id::text,p.auth_user_id,lower(p.name))) coalesce(p.scholar_id::text,p.auth_user_id,lower(p.name)) AS who,p.institution
       FROM meeting_minute_participants p JOIN meeting_minutes m ON m.id=p.minute_id WHERE m.project_id=${projectId}::uuid AND p.institution<>'' ORDER BY coalesce(p.scholar_id::text,p.auth_user_id,lower(p.name)),m.created_at DESC`
   ]);
   const institution = new Map(used.map((u) => [String(u.who), String(u.institution)]));
   const STATUS: Record<string, string> = { active: 'Ativo', suspended: 'Suspenso', finished: 'Encerrado' };
-  type Candidate = { scholarId: string | null; authUserId: string | null; name: string; role: string; email: string; institution: string; registration: string; pendingFirstAccess: boolean };
+  // external: member marked "Externo" in the record. Without an account, they sign by the public
+  // link, so the record needs a valid CPF and a WhatsApp number (guestReady; the CPF itself stays on the server).
+  type Candidate = { scholarId: string | null; authUserId: string | null; name: string; role: string; email: string; institution: string; registration: string; pendingFirstAccess: boolean; external: boolean; guestReady: boolean };
   const list: Candidate[] = scholars.map((s) => {
     // signerCandidates only links a member to an account with the same e-mail.
     const account = accounts.find((a) => a.scholarId === s.id) ?? (!String(s.email ?? '').trim() ? accounts.find((a) => s.auth_user_id && a.authUserId === s.auth_user_id) : undefined);
+    const external = s.affiliation === 'Externo';
     return { scholarId: String(s.id), authUserId: account?.authUserId ?? null, name: String(s.full_name), role: String(s.role_area || account?.roleLabel || ''), email: String(s.email || account?.email || ''),
-      institution: institution.get(String(s.id)) ?? (account ? institution.get(account.authUserId) : undefined) ?? '', registration: STATUS[String(s.status)] ?? String(s.status), pendingFirstAccess: !!account?.pendingFirstAccess };
+      // The institution comes from the member record (UFT or Externo).
+      institution: String(s.affiliation || 'UFT'), registration: STATUS[String(s.status)] ?? String(s.status), pendingFirstAccess: !!account?.pendingFirstAccess,
+      external, guestReady: external && !!normalizeCpf(String(s.cpf ?? '')) && /^\d{12,15}$/.test(guestPhone(String(s.phone ?? ''))) };
   });
-  for (const a of accounts) if (!list.some((p) => p.authUserId === a.authUserId)) list.push({ scholarId: null, authUserId: a.authUserId, name: a.name, role: a.roleLabel, email: a.email, institution: institution.get(a.authUserId) ?? '', registration: 'Conta de acesso', pendingFirstAccess: a.pendingFirstAccess });
+  for (const a of accounts) if (!list.some((p) => p.authUserId === a.authUserId)) list.push({ scholarId: null, authUserId: a.authUserId, name: a.name, role: a.roleLabel, email: a.email, institution: institution.get(a.authUserId) ?? '', registration: 'Conta de acesso', pendingFirstAccess: a.pendingFirstAccess, external: false, guestReady: false });
   return list;
 }
 
@@ -199,14 +206,20 @@ export async function sendForSignature(id: string, request: Request) {
   const draft = await draftOf(row);
   // The account of each member is resolved again now: a link corrected after the ata was written wins.
   const current = new Map((await participantCandidates(String(row.project_id))).filter((c) => c.scholarId).map((c) => [c.scholarId!, c.authUserId]));
-  const chosen = draft.participants.map((p) => (p.scholarId && current.has(p.scholarId) ? { ...p, authUserId: current.get(p.scholarId) ?? null } : p)).filter((p) => p.signs);
+  const records = new Map((await sql`SELECT id,cpf,phone,affiliation FROM scholars WHERE project_id=${row.project_id}::uuid AND deleted_at IS NULL`).map((s) => [String(s.id), s]));
+  const chosen = draft.participants.map((p) => {
+    const linked = p.scholarId && current.has(p.scholarId) ? { ...p, authUserId: current.get(p.scholarId) ?? null } : p;
+    // External member without an account: signs by the public link with the CPF and WhatsApp of the record.
+    const record = linked.scholarId ? records.get(linked.scholarId) : undefined;
+    return !linked.authUserId && record?.affiliation === 'Externo' ? { ...linked, cpf: String(record.cpf ?? ''), phone: String(record.phone ?? ''), externalMember: true } : { ...linked, externalMember: false };
+  }).filter((p) => p.signs);
   if (!chosen.length) throw fail('Marque em Participantes quem deve assinar a ata.', 400);
   const accounts = new Map((await signerCandidates(String(row.project_id))).map((c) => [c.authUserId, c]));
-  const guests = chosen.filter((p) => !p.authUserId && !p.scholarId && p.attendance === 'guest');
+  const guests = chosen.filter((p) => !p.authUserId && (p.externalMember || (!p.scholarId && p.attendance === 'guest')));
   const missing = chosen.filter((p) => !guests.includes(p) && !accounts.has(p.authUserId!));
-  if (missing.length) throw fail(`Sem acesso ativo ao projeto: ${missing.map((p) => p.name).join(', ')}. Crie um acesso de assinatura em Configurações.`, 400);
+  if (missing.length) throw fail(`Sem acesso ativo ao projeto: ${missing.map((p) => p.name).join(', ')}. Crie um acesso de assinatura em Configurações ou, se for membro externo, marque "Externo" no cadastro.`, 400);
   for (const p of guests) {
-    if (!normalizeCpf(p.cpf ?? '') || !/^\d{12,15}$/.test(guestPhone(p.phone ?? ''))) throw fail(`Confira CPF e WhatsApp de ${p.name}.`, 400);
+    if (!normalizeCpf(p.cpf ?? '') || !/^\d{12,15}$/.test(guestPhone(p.phone ?? ''))) throw fail(p.externalMember ? `${p.name} é membro externo: informe no cadastro um CPF válido e o WhatsApp com DDI e DDD.` : `Confira CPF e WhatsApp de ${p.name}.`, 400);
     if (p.email.trim() && [...accounts.values()].some(a => a.email.toLowerCase() === p.email.trim().toLowerCase())) throw fail(`${p.name}: este e-mail já tem conta no projeto. Inclua a pessoa pelo cadastro para assinar com seu próprio login.`, 400);
     const [member] = await sql`SELECT 1 FROM signer_identities WHERE cpf=${normalizeCpf(p.cpf!)} OR (phone<>'' AND phone=${guestPhone(p.phone!)})`;
     if (member) throw fail(`${p.name}: CPF ou telefone já vinculado a uma conta. Inclua a pessoa pelo cadastro e solicite sua assinatura pelo login.`, 400);

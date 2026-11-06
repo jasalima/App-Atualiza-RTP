@@ -24,6 +24,7 @@ export function ScholarForm({ scholar, onSaved, onCancel }: { scholar: Scholar |
   return <form className="grid-form" onSubmit={save}>
     <label className="field span-2">Nome completo<input name="fullName" required defaultValue={scholar?.full_name} /><small>Use o nome exatamente como aparece no Plano de Trabalho: é por ele que a importação identifica o bolsista.</small></label>
     <label className="field">Função ou área de atuação<input name="roleArea" defaultValue={scholar?.role_area} /></label>
+    <label className="field">Instituição<select name="affiliation" defaultValue={scholar?.affiliation ?? 'UFT'}><option value="UFT">UFT</option><option value="Externo">Externo</option></select><small>Vai automaticamente para as atas. Membro externo sem conta assina a ata pelo link público, com CPF e código no WhatsApp: mantenha CPF e WhatsApp preenchidos.</small></label>
     <label className="field">Telefone / WhatsApp<input name="phone" type="tel" placeholder="5563999999999" defaultValue={scholar?.phone} /><small>Informe DDI e DDD para envio de documentos.</small></label>
     <label className="field">E-mail<input name="email" type="email" defaultValue={scholar?.email} /></label>
     <label className="field">CPF<input name="cpf" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" defaultValue={formatCpf(scholar?.cpf)} /></label>
@@ -51,7 +52,7 @@ export default function Scholars() {
         <div className="table-wrap"><table className="ledger">
           <thead><tr><th>Bolsista</th><th>Vigência</th><th>Plano</th><th>RTPs</th><th>Próxima etapa</th><th>Bolsa</th></tr></thead>
           <tbody>{rows.map((s) => <tr key={s.id}>
-            <td><NavLink className="who" to={`/scholars/${s.id}`}><Pivot sectors={sectorsOf(s)} size={26} /><div>{s.full_name}<small>{s.role_area || 'Área não informada'}</small></div></NavLink></td>
+            <td><NavLink className="who" to={`/scholars/${s.id}`}><Pivot sectors={sectorsOf(s)} size={26} /><div>{s.full_name}<small>{s.role_area || 'Área não informada'}{s.affiliation === 'Externo' ? ' · Externo' : ''}</small></div></NavLink></td>
             <td className="num">{fmtPeriod(s.starts_on, s.ends_on)}</td>
             <td>{s.plan ? `Versão ${s.plan.version}` : <span className="muted">—</span>}</td>
             <td className="num">{s.reports.length}</td>

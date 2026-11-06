@@ -295,7 +295,9 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
   const [guest, setGuest] = useState(false);
   const keyOf = (p: { scholarId: string | null; authUserId: string | null; name: string }) => p.scholarId ?? p.authUserId ?? `guest:${p.name}`;
   const selected = new Map(draft.participants.map((p) => [keyOf(p), p]));
-  const maySign = (p: MinuteParticipant) => !!p.authUserId || (!p.scholarId && p.attendance === 'guest' && !!p.cpf && !!p.phone);
+  // External members without an account sign by the public link when the record has CPF and WhatsApp.
+  const candidateOf = (p: MinuteParticipant) => candidates?.find((c) => keyOf(c) === keyOf(p));
+  const maySign = (p: MinuteParticipant) => !!p.authUserId || (!!p.scholarId && !!candidateOf(p)?.guestReady) || (!p.scholarId && p.attendance === 'guest' && !!p.cpf && !!p.phone);
   const update = (key: string, patch: Partial<MinuteParticipant>) => onChange(draft.participants.map((p) => {
     if (keyOf(p) !== key) return p;
     const next = { ...p, ...patch };
@@ -305,7 +307,7 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
   const toggle = (c: ParticipantCandidate) => {
     const k = keyOf(c);
     if (selected.has(k)) onChange(draft.participants.filter((p) => keyOf(p) !== k));
-    else onChange([...draft.participants, { scholarId: c.scholarId, authUserId: c.authUserId, name: c.name, institution: c.institution, role: c.role, email: c.email, attendance: 'present', signs: !!c.authUserId }]);
+    else onChange([...draft.participants, { scholarId: c.scholarId, authUserId: c.authUserId, name: c.name, institution: c.institution, role: c.role, email: c.email, attendance: 'present', signs: !!c.authUserId || !!c.guestReady }]);
   };
   const guests = draft.participants.filter((p) => !candidates?.some((c) => keyOf(c) === keyOf(p)));
   const present = draft.participants.filter((p) => p.attendance === 'present' || p.attendance === 'guest').length;
@@ -313,20 +315,20 @@ function Participants({ draft, candidates, editable, onChange }: { draft: Minute
     const on = !!p, name = p?.name ?? c!.name;
     return <tr key={key} className={on ? undefined : 'row-off'}>
       <td className="col-pick"><input type="checkbox" className="pick" checked={on} disabled={!editable || !c} onChange={() => c && toggle(c)} aria-label={`Incluir ${name} na ata`} /></td>
-      <td className="col-person"><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}` : 'Convidado externo · confirmação por WhatsApp'}</small>{p && !c && <div className="guest-identity-fields"><label className="field">CPF do convidado<input inputMode="numeric" maxLength={20} value={p.cpf ?? ''} disabled={!editable} onChange={e => update(key, { cpf: e.target.value })} /></label><label className="field">WhatsApp (DDI + DDD)<input type="tel" maxLength={35} value={p.phone ?? ''} disabled={!editable} onChange={e => update(key, { phone: e.target.value })} /></label></div>}</td>
+      <td className="col-person"><b>{name}</b><small>{c ? `${c.registration}${c.email ? ` · ${c.email}` : ''}${c.external && !c.authUserId ? (c.guestReady ? ' · Externo: assina pelo link público' : ' · Externo: informe CPF e WhatsApp no cadastro para assinar') : ''}` : 'Convidado externo · confirmação por WhatsApp'}</small>{p && !c && <div className="guest-identity-fields"><label className="field">CPF do convidado<input inputMode="numeric" maxLength={20} value={p.cpf ?? ''} disabled={!editable} onChange={e => update(key, { cpf: e.target.value })} /></label><label className="field">WhatsApp (DDI + DDD)<input type="tel" maxLength={35} value={p.phone ?? ''} disabled={!editable} onChange={e => update(key, { phone: e.target.value })} /></label></div>}</td>
       <td>{on ? <input value={p!.institution} disabled={!editable} onChange={(e) => update(key, { institution: e.target.value })} placeholder="Ex.: UFT" aria-label={`Instituição de ${name}`} /> : <span className="muted">{c?.institution || '—'}</span>}</td>
       <td>{on ? <input value={p!.role} disabled={!editable} onChange={(e) => update(key, { role: e.target.value })} aria-label={`Função de ${name}`} /> : <span className="muted">{c?.role || '—'}</span>}</td>
       <td>{on && <select value={p!.attendance} disabled={!editable} onChange={(e) => update(key, { attendance: e.target.value as MinuteParticipant['attendance'] })} aria-label={`Situação de ${name}`}>
         {(c ? ['present', 'absent', 'justified'] : ['guest', 'absent', 'justified']).map((a) => <option key={a} value={a}>{ATTENDANCE_LABEL[a as MinuteParticipant['attendance']]}</option>)}
       </select>}</td>
-      <td>{on && <label className="sign-toggle" title={!maySign(p!) ? 'Membro: vincule a conta. Convidado externo: informe CPF e WhatsApp.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !maySign(p!) || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{maySign(p!) ? 'Assina' : 'Dados pendentes'}</span></label>}</td>
+      <td>{on && <label className="sign-toggle" title={!maySign(p!) ? 'Membro da UFT: vincule a conta. Membro ou convidado externo: informe CPF e WhatsApp.' : undefined}><input type="checkbox" checked={p!.signs} disabled={!editable || !maySign(p!) || !['present', 'guest'].includes(p!.attendance)} onChange={(e) => update(key, { signs: e.target.checked })} aria-label={`${name} assina`} /><span>{maySign(p!) ? 'Assina' : 'Dados pendentes'}</span></label>}</td>
       <td>{on && editable && !c && <button className="icon-btn" aria-label={`Remover ${name}`} onClick={() => onChange(draft.participants.filter((x) => keyOf(x) !== key))}><X /></button>}</td>
     </tr>;
   };
   return <section className="panel minute-section">
     <div className="panel-head"><div><h2>Participantes</h2><p>Marque quem esteve na reunião (o cadastro de cada pessoa não é alterado). {present} presente(s), {draft.participants.filter((p) => p.signs).length} assinam.</p></div>
       {editable && candidates && <div className="head-actions">
-        <button className="btn btn-sm" onClick={() => onChange([...draft.participants, ...candidates.filter((c) => !selected.has(keyOf(c))).map((c) => ({ scholarId: c.scholarId, authUserId: c.authUserId, name: c.name, institution: c.institution, role: c.role, email: c.email, attendance: 'present' as const, signs: !!c.authUserId }))])}><ListPlus />Incluir todos</button>
+        <button className="btn btn-sm" onClick={() => onChange([...draft.participants, ...candidates.filter((c) => !selected.has(keyOf(c))).map((c) => ({ scholarId: c.scholarId, authUserId: c.authUserId, name: c.name, institution: c.institution, role: c.role, email: c.email, attendance: 'present' as const, signs: !!c.authUserId || !!c.guestReady }))])}><ListPlus />Incluir todos</button>
         <button className="btn btn-sm" onClick={() => onChange(draft.participants.map((p) => ({ ...p, signs: maySign(p) && ['present', 'guest'].includes(p.attendance) })))}><FileSignature />Presentes assinam</button>
         <button className="btn btn-sm btn-quiet" onClick={() => onChange([])}>Limpar</button>
       </div>}

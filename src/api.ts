@@ -39,6 +39,7 @@ const projectColumns = (x: Record<string, any>) => ({
 });
 const scholarColumns = (x: Record<string, any>) => ({
   ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}), ...(x.cpf !== undefined ? { cpf: String(x.cpf).replace(/\D/g, '') } : {}),
+  ...(x.affiliation === 'UFT' || x.affiliation === 'Externo' ? { affiliation: x.affiliation } : {}),
   full_name: x.fullName, role_area: x.roleArea ?? '', scholarship_type: x.scholarshipType ?? '',
   starts_on: x.startsOn, ends_on: x.endsOn, status: x.status ?? 'active', notes: x.notes ?? ''
 });
