@@ -573,4 +573,4 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
 .seal small{font-size:8.5px;font-weight:700;color:var(--seal-dark)}
 .seal b{font-size:11px;color:#111;overflow-wrap:anywhere}
 .seal span{font-size:8.5px}
-.seal code{font-family:Arial,var(--ui);font-size:8px;color:#555}
+.seal code{font-family:Arial,var(--ui);font-size:8px;color:#555;background:none;padding:0;border:0}
