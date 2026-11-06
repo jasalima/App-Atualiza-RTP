@@ -141,3 +141,9 @@
 .reject-box textarea{min-height:96px}
 .reject-box .btn-danger{border-color:var(--alarm);background:var(--sheet)}
 @media (max-width:600px){.edit-actions{flex-direction:column-reverse}.edit-actions .btn{width:100%;height:46px}}
+/* Linha de assinatura do Formulário 26: rótulo à esquerda, bloco de assinatura alinhado à direita da célula. */
+.sign-cell{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 12px}
+.sign-cell>span{flex:1 1 auto}
+.sign-cell .seal{margin-left:auto}
+.sign-cell .paper-line{flex:1 1 40%}
+@media (max-width:600px){.paper-trip tbody tr.paper-sign td:first-child{white-space:normal}}

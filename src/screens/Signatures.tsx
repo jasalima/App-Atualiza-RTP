@@ -202,8 +202,10 @@ function Form26Preview({ view }: { view: SigningView & { document: { kind: 'trav
         {r.objective.trim() && <tr><td colSpan={2}><b>Objetivo:</b> {r.objective}</td></tr>}
         <tr><td style={{ width: '22%' }}>Data</td><td>Atividades</td></tr>
         {(rows.length ? rows : [{ date: r.departureDate ?? '', activity: '' }]).map((e, i) => <tr key={i}><td>{e.date ? br(e.date) : ''}</td><td style={{ whiteSpace: 'pre-wrap' }}>{e.activity}</td></tr>)}
-        <tr className="paper-sign"><td>Data:</td><td>Assinatura do beneficiário: {stamp(1)}</td></tr>
-        <tr className="paper-sign"><td>Data:</td><td>De acordo (Coordenador do projeto): {stamp(2)}</td></tr>
+        {([[1, 'Assinatura do beneficiário:'], [2, 'De acordo (Coordenador do projeto):']] as const).map(([step, label]) => {
+          const x = s.find((y) => y.step === step && y.status === 'signed');
+          return <tr className="paper-sign" key={step}><td>Data:{x?.signedAt ? ` ${new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date(x.signedAt))}` : ''}</td><td><div className="sign-cell"><span>{label}</span>{stamp(step)}</div></td></tr>;
+        })}
       </tbody>
     </table>
     <h4 className="paper-center">REGISTRO FOTOGRÁFICO</h4>

@@ -1,7 +1,7 @@
 import { AlignmentType, BorderStyle, Document, HeightRule, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, Tab, TabStopType, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
-import { manifestDocx, manifestPdf, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
+import { manifestDocx, manifestPdf, SEAL_H_PT, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
 
 export type TravelBeneficiary = { name: string; phone: string; email: string; project: string; role: string };
 /** Filled travel data; absent fields stay as blank lines for handwriting. */
@@ -74,7 +74,7 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     return new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
       cell([inCell(signed ? `Data: ${signedDate(signed.signedAt)}` : 'Data:')], { width: DATE_COL, bottom: true }),
       cell(signed
-        ? [para(label, { after: 60 }), sealDocx(signed, { font: FONT, width: ACT_COL - 216, verifyUrl: fill.signatures?.verifyUrl }), para('', { after: 0 })]
+        ? [para(label, { after: 60 }), sealDocx(signed, { font: FONT, width: ACT_COL - 216, verifyUrl: fill.signatures?.verifyUrl, align: 'right' }), para('', { after: 0 })]
         : [para([{ text: `${label} ` }, { text: SIGN_LINE(label) }], { after: 0 })], { width: ACT_COL, bottom: true })
     ] });
   };
@@ -182,11 +182,11 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const signRow = (label: string, step: number) => {
       const signed = fill.signatures?.signers.find((x) => x.step === step);
       if (!signed) return row('Data:', label, 52, true, true);
-      h = 54; fits(h); box(h);
+      h = 60; fits(h); box(h);
       font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 28, { width: c1 - 2 * pad });
       font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
       // Compact signature block (gov.br style): green for the beneficiary, gold for the coordination.
-      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + 16, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: fill.signatures?.verifyUrl });
+      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + h - SEAL_H_PT - 5, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: fill.signatures?.verifyUrl, align: 'right' });
       y += h;
     };
     signRow('Assinatura do beneficiário:', 1);

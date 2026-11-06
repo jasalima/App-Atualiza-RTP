@@ -60,7 +60,7 @@ export async function toDocx(c: ReportContent, signatures?: SignatureManifest | 
       new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 360, after: 1200 }, children: [run(c.closing.placeAndDate)] }),
       centred(c.closing.scholar, false, 0),
       centred(c.closing.role, false, 0),
-      ...(signatures?.signers ?? []).flatMap((x) => [new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }), sealDocx(x, { font: 'Calibri', width: 7400, verifyUrl: signatures?.verifyUrl })]),
+      ...(signatures?.signers ?? []).flatMap((x) => [new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }), sealDocx(x, { font: 'Calibri', width: 7400, verifyUrl: signatures?.verifyUrl, align: 'center' })]),
       ...(signatures?.signers.length ? manifestDocx(signatures, { font: FONT, size: 24, width: 9071 }) : [])
     ]
   }] });

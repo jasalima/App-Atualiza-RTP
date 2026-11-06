@@ -566,8 +566,8 @@ code{font-size:12.5px;background:var(--line-soft);padding:1px 5px;border-radius:
 @media (max-width:560px){.signer-user{display:none}}
 
 /* Bloco de assinatura compacto, no estilo da assinatura gov.br (mesmo desenho do PDF/DOCX) */
-.seal{--seal-dark:#1f6b45;display:inline-grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;max-width:290px;margin-top:4px;font-family:Arial,var(--ui);color:#333;line-height:1.2}
-.seal[data-tone=coordination]{--seal-dark:#8a6508}
+.seal{--seal-dark:#1f6b45;--seal-mid:#2e8b57;--seal-light:#f3f9f5;display:inline-grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;max-width:290px;padding:5px 9px 5px 6px;border:1px solid color-mix(in srgb,var(--seal-mid) 35%,transparent);border-radius:4px;font-family:Arial,var(--ui);color:#333;line-height:1.2;background-color:var(--seal-light);background-image:repeating-radial-gradient(circle at 0 130%,transparent 0 6px,color-mix(in srgb,var(--seal-mid) 9%,transparent) 6px 7px),repeating-radial-gradient(circle at 100% -30%,transparent 0 8px,color-mix(in srgb,var(--seal-mid) 7%,transparent) 8px 9px)}
+.seal[data-tone=coordination]{--seal-dark:#8a6508;--seal-mid:#c79a12;--seal-light:#fdf8ea}
 .seal img{width:24px;height:24px}
 .seal div{display:flex;flex-direction:column;min-width:0}
 .seal small{font-size:8.5px;font-weight:700;color:var(--seal-dark)}

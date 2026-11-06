@@ -1,5 +1,5 @@
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
-import { AlignmentType, BorderStyle, ImageRun, Paragraph, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
+import { AlignmentType, BorderStyle, ImageRun, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import { SEAL_EMBLEM_GOLD, SEAL_EMBLEM_GREEN } from '../assets/seal-emblems';
 
 /** Electronic signatures collected for a document, printed on its last page. */
@@ -83,11 +83,12 @@ export function manifestPdf(doc: PDFKit.PDFDocument, m: SignatureManifest, o: { 
 }
 
 /* Compact signature block printed on each signature field -------------------------------------- */
-// In the style of the gov.br signature: a small emblem and four short lines. Green for the
-// beneficiary (first signer), gold for the coordination. Full details stay on the manifest page.
+// In the style of the gov.br signature: a small emblem and four short lines, on a faint
+// banknote-style ground. Green for the beneficiary (first signer), gold for the coordination.
+// Full details stay on the manifest page.
 const SEAL = {
-  member: { dark: '1F6B45', emblem: SEAL_EMBLEM_GREEN },
-  coordination: { dark: '8A6508', emblem: SEAL_EMBLEM_GOLD }
+  member: { dark: '1F6B45', mid: '2E8B57', light: 'F3F9F5', emblem: SEAL_EMBLEM_GREEN },
+  coordination: { dark: '8A6508', mid: 'C79A12', light: 'FDF8EA', emblem: SEAL_EMBLEM_GOLD }
 } as const;
 export const sealTone = (s: SignedBy) => SEAL[s.step === 1 ? 'member' : 'coordination'];
 /** Brazil has no daylight saving time since 2019: Brasília is always UTC-3. */
@@ -99,20 +100,24 @@ export const sealLines = (s: SignedBy, verifyUrl?: string | null) => ({
 });
 /** Widest the block gets: about 7.5 cm, as a signature stamp. */
 export const SEAL_MAX_PT = 215;
+/** Height of the PDF block. */
+export const SEAL_H_PT = 36;
 
-/** DOCX block: emblem cell and four lines, no frame. */
-export function sealDocx(s: SignedBy, o: { font: string; width: number; verifyUrl?: string | null }) {
-  const t = sealTone(s), l = sealLines(s, o.verifyUrl), width = Math.min(o.width, SEAL_MAX_PT * 20), emblemCol = 560, textCol = width - emblemCol;
-  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+/** DOCX block: emblem and four lines on a light tint with a thin frame; right-aligned in the cell when asked. */
+export function sealDocx(s: SignedBy, o: { font: string; width: number; verifyUrl?: string | null; align?: 'left' | 'center' | 'right' }) {
+  const t = sealTone(s), l = sealLines(s, o.verifyUrl), width = Math.min(o.width, SEAL_MAX_PT * 20), emblemCol = 620, textCol = width - emblemCol;
+  const frame = { style: BorderStyle.SINGLE, size: 4, color: t.mid }, none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const shading = { fill: t.light, type: ShadingType.CLEAR, color: 'auto' };
   const run = (text: string, opts: { bold?: boolean; size?: number; color?: string } = {}) => new TextRun({ text, bold: opts.bold, size: opts.size ?? 11, color: opts.color ?? '333333', font: o.font });
   const line = (children: TextRun[]) => new Paragraph({ spacing: { before: 0, after: 0, line: 190 }, children });
   return new Table({
     width: { size: width, type: WidthType.DXA }, columnWidths: [emblemCol, textCol], layout: TableLayoutType.FIXED,
-    borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+    alignment: o.align === 'right' ? AlignmentType.RIGHT : o.align === 'center' ? AlignmentType.CENTER : AlignmentType.LEFT,
+    borders: { top: frame, bottom: frame, left: frame, right: frame, insideHorizontal: none, insideVertical: none },
     rows: [new TableRow({ cantSplit: true, children: [
-      new TableCell({ width: { size: emblemCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 0, bottom: 0, left: 0, right: 60 },
-        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ type: 'png', data: t.emblem, transformation: { width: 30, height: 30 } })] })] }),
-      new TableCell({ width: { size: textCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      new TableCell({ width: { size: emblemCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading, margins: { top: 60, bottom: 60, left: 80, right: 40 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ type: 'png', data: t.emblem, transformation: { width: 28, height: 28 } })] })] }),
+      new TableCell({ width: { size: textCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading, margins: { top: 60, bottom: 60, left: 40, right: 100 },
         children: [
           line([run(l.title, { bold: true, size: 11, color: t.dark })]),
           line([run(l.name, { bold: true, size: 14, color: '111111' })]),
@@ -123,18 +128,29 @@ export function sealDocx(s: SignedBy, o: { font: string; width: number; verifyUr
   });
 }
 
-/** PDF block: emblem and four lines, about 7.5 × 1.2 cm. Returns its height. */
-export function sealPdf(doc: PDFKit.PDFDocument, s: SignedBy, o: { x: number; y: number; width: number; regular: string; bold: string; verifyUrl?: string | null }) {
-  const t = sealTone(s), l = sealLines(s, o.verifyUrl), w = Math.min(o.width, SEAL_MAX_PT), h = 32, e = 24;
-  const { x, y } = o, tx = x + e + 6, tw = w - e - 6;
+/** PDF block: emblem and four lines on a faint guilloché ground, about 7.5 × 1.3 cm. Returns its height. */
+export function sealPdf(doc: PDFKit.PDFDocument, s: SignedBy, o: { x: number; y: number; width: number; regular: string; bold: string; verifyUrl?: string | null; align?: 'left' | 'right' }) {
+  const t = sealTone(s), l = sealLines(s, o.verifyUrl), w = Math.min(o.width, SEAL_MAX_PT), h = SEAL_H_PT, e = 22, pad = 5;
+  const x = o.align === 'right' ? o.x + o.width - w : o.x, y = o.y, tx = x + pad + e + 5, tw = w - (tx - x) - pad;
   doc.save();
-  doc.image(t.emblem, x, y + (h - e) / 2, { width: e, height: e });
-  doc.font(o.bold).fontSize(5.8).fillColor(`#${t.dark}`).text(l.title, tx, y + 1, { width: tw, lineBreak: false });
+  doc.roundedRect(x, y, w, h, 3).fill(`#${t.light}`);
+  // Banknote ground: interlaced sine waves, very faint, clipped to the block.
+  doc.save(); doc.roundedRect(x, y, w, h, 3).clip();
+  for (let k = 0; k < 9; k++) {
+    const base = y + 2 + k * 4.2, amp = 1.6 + (k % 3) * 0.7, period = 22 + (k % 4) * 6, phase = k * 1.1;
+    doc.moveTo(x, base);
+    for (let px = 0; px <= w; px += 2) doc.lineTo(x + px, base + amp * Math.sin(px / period * 2 * Math.PI + phase));
+    doc.lineWidth(0.3).strokeOpacity(0.13).stroke(`#${t.mid}`);
+  }
+  doc.restore();
+  doc.strokeOpacity(0.55).lineWidth(0.5).strokeColor(`#${t.mid}`).roundedRect(x, y, w, h, 3).stroke().strokeOpacity(1);
+  doc.image(t.emblem, x + pad, y + (h - e) / 2, { width: e, height: e });
+  doc.font(o.bold).fontSize(5.8).fillColor(`#${t.dark}`).text(l.title, tx, y + 3.6, { width: tw, lineBreak: false });
   // A long name shrinks instead of wrapping.
   let size = 7.6; while (size > 5.6 && doc.font(o.bold).fontSize(size).widthOfString(l.name) > tw) size -= 0.2;
-  doc.font(o.bold).fontSize(size).fillColor('#111111').text(l.name, tx, y + 8.4, { width: tw, lineBreak: false });
-  doc.font(o.regular).fontSize(5.8).fillColor('#333333').text(l.when, tx, y + 17.2, { width: tw, lineBreak: false });
-  doc.font(o.regular).fontSize(5.3).fillColor('#555555').text(l.check, tx, y + 24.4, { width: tw, lineBreak: false });
+  doc.font(o.bold).fontSize(size).fillColor('#111111').text(l.name, tx, y + 11, { width: tw, lineBreak: false });
+  doc.font(o.regular).fontSize(5.8).fillColor('#333333').text(l.when, tx, y + 19.8, { width: tw, lineBreak: false });
+  doc.font(o.regular).fontSize(5.3).fillColor('#555555').text(l.check, tx, y + 27, { width: tw, lineBreak: false });
   doc.restore(); doc.fillColor('black').strokeColor('black');
   return h;
 }
