@@ -36,6 +36,11 @@ describe('reflow of pasted minutes text', () => {
   it('reflows the plain objective of the automatic opening', () => {
     expect(reflowText('Discutir a validação junto à APROEST e\ndefinir os instrumentos.\n• Planejar a estratégia\nde submissão.\n\n')).toBe('Discutir a validação junto à APROEST e definir os instrumentos.\n• Planejar a estratégia de submissão.');
   });
+  it('joins a line ending in a comma or a connective even before a capital letter, but keeps titles apart', () => {
+    expect(docText(reflowNodes([p('para cada produto , o TED .')])[0])).toBe('para cada produto, o TED.');
+    const out = reflowNodes([p('o Plano de Instrumento de'), p('Pesquisa (PIP) e Manual.'), p('pesquisas de campo,'), p('Gilson pediu a documentação.'), p('1. Rotina e Organização da Equipe'), p('Novo dia e horário de reunião.')]);
+    expect(out.map((n) => docText(n))).toEqual(['o Plano de Instrumento de Pesquisa (PIP) e Manual.', 'pesquisas de campo, Gilson pediu a documentação.', '1. Rotina e Organização da Equipe', 'Novo dia e horário de reunião.']);
+  });
   it('is idempotent', () => {
     const once = reflowNodes([p('linha um sem ponto'), p('continua aqui.')]);
     expect(reflowNodes(once)).toEqual(once);

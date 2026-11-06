@@ -133,7 +133,10 @@ export function autoClosing(d: MinuteDraft): RichDoc {
 // previous one when that one does not end a sentence and the new one starts in lower case.
 const MARKER = /^\s*(?:[•●◦▪‣\-–—*]|\d{1,2}[.)]\s|[a-z][)]\s)/;
 const ENDS = /[.!?:;]["'”’)]*\s*$/;
-const continues = (prev: string, next: string) => !!prev.trim() && !ENDS.test(prev) && /^\s*[a-zà-ÿ(]/.test(next) && !MARKER.test(next);
+// A line ending in a comma or in a word that cannot close a sentence ("de", "e", "para"…) also
+// continues, even when the next line starts in upper case ("Plano de Instrumento de" / "Pesquisa").
+const OPEN_END = /(?:,|\b(?:a|à|ao|aos|as|às|o|os|e|ou|de|da|das|do|dos|em|na|nas|no|nos|um|uma|para|por|pela|pelo|com|sem|sobre|entre|que|como|seu|sua|seus|suas)\s*)$/i;
+const continues = (prev: string, next: string) => !!prev.trim() && !ENDS.test(prev) && !MARKER.test(next) && (/^\s*[a-zà-ÿ(]/.test(next) || OPEN_END.test(prev.trim()));
 
 /** Joins the wrapped lines of a plain text; bullets and sentence ends keep their line. */
 export function reflowText(s: string) {
@@ -180,7 +183,7 @@ function reflowInline(nodes: RichNode[] = []): RichNode[] {
   merged.forEach((n, i) => {
     if (n.type !== 'text') return;
     const prev = merged[i - 1];
-    n.text = n.text!.replace(/ {2,}/g, ' ');
+    n.text = n.text!.replace(/ {2,}/g, ' ').replace(/ +([,;.:!?])(?=\s|$)/g, '$1');
     if (!prev || prev.type === 'hardBreak' || (prev.type === 'text' && prev.text!.endsWith(' '))) n.text = n.text.replace(/^ /, '');
   });
   for (let i = merged.length - 1; i >= 0 && merged[i].type === 'text'; i--) { merged[i].text = merged[i].text!.replace(/ +$/, ''); if (merged[i].text) break; }
