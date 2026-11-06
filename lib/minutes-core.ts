@@ -68,7 +68,7 @@ export async function loadImages(keys: string[]) {
 export const minuteFolder = (projectId: string, minuteId: string) => `${projectId}/minutes/${minuteId}/`;
 
 /** Official PDF of a version in its current signature state: stored once, served identically afterwards. */
-export const RENDER_LAYOUT = 'L3';
+export const RENDER_LAYOUT = 'L4'; // L4: attendance table centred
 export function checkKindOf(levels: string[]) {
   if (!levels.length) return 'documental' as const;
   if (levels.includes('falha')) return 'falha' as const;

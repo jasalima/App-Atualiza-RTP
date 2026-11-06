@@ -273,8 +273,9 @@ function body(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
 function attendance(doc: PDFKit.PDFDocument, c: MinuteContent) {
   if (!c.participants.length) return;
   heading(doc, 'LISTA DE PRESENÇA');
-  const data: Cell[][] = [['Participante', 'Instituição', 'Função', 'Situação'].map((t) => ({ text: t, font: { src: 'Helvetica-Bold', size: 8.8 }, backgroundColor: '#E9E9E9', align: { x: 'left', y: 'center' } }))];
-  for (const p of c.participants) data.push([p.name, p.institution || '—', p.role || '—', ATTENDANCE_LABEL[p.attendance]].map((t) => ({ text: pdfSafe(t), font: { src: 'Helvetica', size: 8.8 }, align: { x: 'left', y: 'center' } })));
+  // Headers centred; in the body only the participant's name stays on the left.
+  const data: Cell[][] = [['Participante', 'Instituição', 'Função', 'Situação'].map((t) => ({ text: t, font: { src: 'Helvetica-Bold', size: 8.8 }, backgroundColor: '#E9E9E9', align: { x: 'center', y: 'center' } }))];
+  for (const p of c.participants) data.push([p.name, p.institution || '—', p.role || '—', ATTENDANCE_LABEL[p.attendance]].map((t, i) => ({ text: pdfSafe(t), font: { src: 'Helvetica', size: 8.8 }, align: { x: i ? 'center' : 'left', y: 'center' } })));
   need(doc, 60);
   doc.table({ position: { x: LEFT, y: doc.y }, maxWidth: WIDTH, columnStyles: [0.34, 0.24, 0.24, 0.18].map((k) => ({ width: k * WIDTH })), defaultStyle: { padding: 3.5, border: 0.5, borderColor: '#777777' }, data: data as never });
   doc.x = LEFT; doc.y += 14;
