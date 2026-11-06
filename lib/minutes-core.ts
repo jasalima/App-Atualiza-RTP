@@ -71,7 +71,9 @@ export async function officialPdf(versionId: string) {
   const v = await minuteVersion(versionId);
   const { request, signers } = await versionSignatures(versionId);
   const signed = signers.filter((s) => s.status === 'signed').sort((a, b) => iso(a.signed_at).localeCompare(iso(b.signed_at)));
-  const stateKey = `${request?.id ?? 'none'}:${signed.length}`;
+  // The layout tag renders issued atas again when the PDF layout changes (L2: pasted lines joined
+  // into justified paragraphs). Earlier renders stay stored, so files already shared still verify.
+  const stateKey = `${request?.id ?? 'none'}:${signed.length}:L2`;
   const filename = `${v.content.number.replace(/[^\w]+/g, '-').replace(/-+$/, '')}${request?.status === 'completed' ? '-assinada' : ''}.pdf`.replace(/^-/, '');
   const [stored] = await sql`SELECT storage_key FROM meeting_minute_renders WHERE version_id=${versionId}::uuid AND state_key=${stateKey}`;
   if (stored) return { buffer: await readPrivateObject(String(stored.storage_key), 40 * 1024 * 1024), mime: 'application/pdf', filename, signatures: signed.length, total: signers.length };

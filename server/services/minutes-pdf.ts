@@ -2,7 +2,7 @@ import PDFDocument from 'pdfkit';
 import qrcode from 'qrcode-generator';
 import { LOGO_PAJE, LOGO_POLO, LOGO_UFT } from '../assets/minutes-logos';
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
-import { ATTENDANCE_LABEL, dateLong, dateShort, numberTopics, timeText, type MinuteContent, type RichDoc, type RichNode } from '../../lib/minutes-model';
+import { ATTENDANCE_LABEL, dateLong, dateShort, numberTopics, reflowNodes, reflowText, timeText, type MinuteContent, type RichDoc, type RichNode } from '../../lib/minutes-model';
 
 // Ata de reunião in the institutional model (Ata_Reuniao_Produto_1.3): UFT / Polo / PAJE header,
 // orange title band, justified body, SEI-like signature blocks with the RTP seal, authenticity
@@ -145,7 +145,8 @@ function heading(doc: PDFKit.PDFDocument, text: string, o: { size?: number; x?: 
 
 /* Rich content --------------------------------------------------------------------------------- */
 function blocks(doc: PDFKit.PDFDocument, nodes: RichNode[] | undefined, x: number, width: number, images: Map<string, Buffer>) {
-  for (const n of nodes ?? []) block(doc, n, x, width, images);
+  // Lines pasted with the breaks of their source are joined back into justified paragraphs.
+  for (const n of reflowNodes(nodes)) block(doc, n, x, width, images);
 }
 function block(doc: PDFKit.PDFDocument, n: RichNode, x: number, width: number, images: Map<string, Buffer>) {
   const indent = Math.min(Number(n.attrs?.indent ?? 0) || 0, 6) * 18;
@@ -256,7 +257,7 @@ function body(doc: PDFKit.PDFDocument, c: MinuteContent, o: MinutePdfOptions) {
   heading(doc, 'PRÓXIMA REUNIÃO');
   const nm = c.nextMeeting, when = [nm.date ? `Data: ${dateShort(nm.date)}` : '', nm.time ? `às ${timeText(nm.time).replace(/ \(.*/, '')}` : ''].filter(Boolean).join(', ');
   paragraph(doc, [{ text: pdfSafe(when ? `${when}.` : 'Não foi definida data nesta reunião.'), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH, gap: nm.notes.trim() ? 3 : PARA });
-  if (nm.notes.trim()) paragraph(doc, [{ text: pdfSafe(nm.notes.trim()), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH });
+  if (nm.notes.trim()) paragraph(doc, [{ text: pdfSafe(reflowText(nm.notes)), bold: false, italic: false, underline: false }], { x: LEFT, width: WIDTH });
 
   doc.y += 4;
   blocks(doc, c.closing.content, LEFT, WIDTH, o.images);

@@ -88,7 +88,7 @@ details.minute-section[open]>summary h2::after{content:" −"}
 .rich-bar-table>span{font-size:12.5px;font-weight:600;color:var(--water-deep);margin:0 4px}
 .rich-error{color:var(--alarm);font-size:13px;padding:6px 10px}
 .rich-body{padding:16px 22px;outline:none;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#111;cursor:text}
-.rich-body p{margin:0 0 .55em}
+.rich-body p{margin:0 0 .55em;text-align:justify;hyphens:manual}
 .rich-body h2{font-family:var(--ui);font-size:17px;font-stretch:100%;margin:.6em 0 .3em}
 .rich-body h3{font-family:var(--ui);font-size:15.5px;font-stretch:100%;margin:.5em 0 .25em}
 .rich-body ul,.rich-body ol{margin:0 0 .55em;padding-left:1.6em}

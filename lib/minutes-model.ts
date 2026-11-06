@@ -113,7 +113,7 @@ export function autoIntro(d: MinuteDraft, projectTitle: string): RichDoc {
   nodes.push(text(day || '___ de ________ de ____', true), text(`, ${modalityText(d)}, realizou-se reunião da equipe do Projeto `), text(projectTitle, true));
   if (names.length) { nodes.push(text(', com a participação de: ')); names.forEach((n, i) => { nodes.push(text(n, true)); if (i < names.length - 2) nodes.push(text(', ')); else if (i === names.length - 2) nodes.push(text(' e ')); }); }
   nodes.push(text('.'));
-  if (d.objective.trim()) nodes.push(text(` Objetivo da reunião: ${d.objective.trim().replace(/\.$/, '')}.`));
+  if (d.objective.trim()) nodes.push(text(` Objetivo da reunião: ${reflowText(d.objective).replace(/\.$/, '')}.`));
   nodes.push(text(' Dando início aos trabalhos, foram tratados os seguintes pontos de pauta:'));
   return { type: 'doc', content: [paragraph(nodes)] };
 }
@@ -126,6 +126,93 @@ export function autoClosing(d: MinuteDraft): RichDoc {
   if (d.attachments.some((a) => a.mime.startsWith('image/'))) nodes.push(text(' Integra esta ata, como prova documental, o registro fotográfico constante do Anexo I.'));
   return { type: 'doc', content: [paragraph(nodes)] };
 }
+
+/* Reflow --------------------------------------------------------------------------------------- */
+// Text pasted from PDFs, e-mails or WhatsApp keeps the line breaks of its source: every line
+// becomes a paragraph (or a hard break), and justification looks broken. A line continues the
+// previous one when that one does not end a sentence and the new one starts in lower case.
+const MARKER = /^\s*(?:[•●◦▪‣\-–—*]|\d{1,2}[.)]\s|[a-z][)]\s)/;
+const ENDS = /[.!?:;]["'”’)]*\s*$/;
+const continues = (prev: string, next: string) => !!prev.trim() && !ENDS.test(prev) && /^\s*[a-zà-ÿ(]/.test(next) && !MARKER.test(next);
+
+/** Joins the wrapped lines of a plain text; bullets and sentence ends keep their line. */
+export function reflowText(s: string) {
+  const out: string[] = [];
+  for (const raw of s.replace(/\r\n?/g, '\n').split('\n')) {
+    const line = raw.replace(/[ \t ]+/g, ' ').trim();
+    if (!line) continue;
+    if (out.length && !MARKER.test(line) && !ENDS.test(out[out.length - 1])) out[out.length - 1] += ` ${line}`;
+    else out.push(line);
+  }
+  return out.join('\n');
+}
+
+const inlineText = (n: RichNode) => (n.content ?? []).map((c) => c.type === 'text' ? c.text ?? '' : c.type === 'hardBreak' ? '\n' : '').join('');
+const isEmptyPara = (n: RichNode) => n.type === 'paragraph' && !inlineText(n).trim() && !(n.content ?? []).some((c) => c.type !== 'text' && c.type !== 'hardBreak');
+
+/** Inline content of one paragraph: spaces collapsed, wrapped hard breaks turned into spaces. */
+function reflowInline(nodes: RichNode[] = []): RichNode[] {
+  const out: RichNode[] = [];
+  const textBefore = () => out.map((n) => n.type === 'text' ? n.text ?? '' : '\n').join('').split('\n').pop() ?? '';
+  nodes.forEach((n, i) => {
+    if (n.type === 'hardBreak') {
+      const next = nodes.slice(i + 1).find((x) => x.type === 'text')?.text ?? '';
+      if (continues(textBefore(), next)) out.push({ type: 'text', text: ' ', ...(nodes[i - 1]?.marks ? { marks: nodes[i - 1].marks } : {}) });
+      else out.push(n);
+      return;
+    }
+    if (n.type !== 'text' || !n.text) { out.push(n); return; }
+    // Line breaks typed inside a text node behave as hard breaks.
+    const lines = n.text.split('\n');
+    lines.forEach((line, k) => {
+      const t = line.replace(/[ \t ]+/g, ' ');
+      if (k > 0) { if (continues(textBefore(), t)) out.push({ ...n, text: ' ' }); else out.push({ type: 'hardBreak' }); }
+      if (t) out.push({ ...n, text: t });
+    });
+  });
+  // Merge neighbouring texts with the same marks, drop double spaces and the spaces at the ends.
+  const merged: RichNode[] = [];
+  for (const n of out) {
+    const last = merged[merged.length - 1];
+    if (n.type === 'text' && last?.type === 'text' && JSON.stringify(last.marks ?? []) === JSON.stringify(n.marks ?? [])) last.text = `${last.text}${n.text}`;
+    else merged.push({ ...n });
+  }
+  merged.forEach((n, i) => {
+    if (n.type !== 'text') return;
+    const prev = merged[i - 1];
+    n.text = n.text!.replace(/ {2,}/g, ' ');
+    if (!prev || prev.type === 'hardBreak' || (prev.type === 'text' && prev.text!.endsWith(' '))) n.text = n.text.replace(/^ /, '');
+  });
+  for (let i = merged.length - 1; i >= 0 && merged[i].type === 'text'; i--) { merged[i].text = merged[i].text!.replace(/ +$/, ''); if (merged[i].text) break; }
+  return merged.filter((n) => n.type !== 'text' || n.text);
+}
+
+/** The paragraph a continuation line joins: the paragraph itself or the last one inside a list. */
+function tailParagraph(n: RichNode | undefined): RichNode | undefined {
+  if (!n) return undefined;
+  if (n.type === 'paragraph') return n;
+  if (n.type === 'bulletList' || n.type === 'orderedList' || n.type === 'listItem') return tailParagraph(n.content?.[n.content.length - 1]);
+  return undefined;
+}
+
+/** Rich content with wrapped lines joined into real paragraphs and stray blank lines removed. */
+export function reflowNodes(nodes: RichNode[] = []): RichNode[] {
+  const out: RichNode[] = [];
+  for (const raw of nodes) {
+    const n: RichNode = raw.type === 'paragraph' || raw.type === 'heading' ? { ...raw, content: reflowInline(raw.content) }
+      : ['bulletList', 'orderedList', 'listItem', 'blockquote'].includes(raw.type) && raw.content ? { ...raw, content: reflowNodes(raw.content) } : raw;
+    if (isEmptyPara(n)) { if (out.length && !isEmptyPara(out[out.length - 1])) out.push(n); continue; }
+    const target = n.type === 'paragraph' ? tailParagraph(out[out.length - 1]) : undefined;
+    if (target && continues(inlineText(target).split('\n').pop() ?? '', inlineText(n))) {
+      target.content = reflowInline([...(target.content ?? []), { type: 'text', text: ' ' }, ...(n.content ?? [])]);
+      continue;
+    }
+    out.push(n);
+  }
+  while (out.length > 1 && isEmptyPara(out[out.length - 1])) out.pop();
+  return out;
+}
+export const reflowDoc = (doc: RichDoc): RichDoc => ({ ...doc, content: reflowNodes(doc.content) });
 
 /** Plain text of rich content (search, emptiness). */
 export function docText(node: RichNode | RichDoc | null | undefined): string {

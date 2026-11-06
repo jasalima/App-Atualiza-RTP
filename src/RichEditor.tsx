@@ -8,9 +8,10 @@ import Image from '@tiptap/extension-image';
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import {
   AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Columns3, Combine, ImagePlus, IndentDecrease, IndentIncrease,
-  Italic, List, ListOrdered, Minus, Quote, Redo2, Rows3, ScissorsLineDashed, Split, Table2, Trash2, Underline, Undo2
+  Italic, List, ListOrdered, Minus, Quote, Redo2, Rows3, ScissorsLineDashed, Split, Table2, Trash2, Underline, Undo2, WrapText
 } from 'lucide-react';
-import type { RichDoc, RichNode } from '@/lib/minutes-model';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import { reflowDoc, reflowNodes, type RichDoc, type RichNode } from '@/lib/minutes-model';
 
 /* Extensions ------------------------------------------------------------------------------------ */
 // "Recuos": indentation level of paragraphs and headings (lists use their own nesting).
@@ -88,7 +89,19 @@ export default function RichEditor({ value, onChange, editable = true, onUpload,
   changed.current = onChange;
   const editor = useEditor({
     extensions, content: (value ?? { type: 'doc', content: [{ type: 'paragraph' }] }) as never, editable, immediatelyRender: false, shouldRerenderOnTransaction: true,
-    editorProps: { attributes: { class: 'rich-body', 'aria-label': label, style: `min-height:${minHeight}px` } },
+    editorProps: {
+      attributes: { class: 'rich-body', 'aria-label': label, style: `min-height:${minHeight}px` },
+      // Text pasted from PDFs, e-mails or WhatsApp arrives one paragraph per line: join the lines.
+      transformPasted: (slice, view) => {
+        try {
+          const before = (slice.content.toJSON() ?? []) as RichNode[], nodes = reflowNodes(before);
+          if (!nodes.length || JSON.stringify(nodes) === JSON.stringify(before)) return slice;
+          // Open ends are kept only where the edge node is still the same kind (a paragraph merges into the text around it).
+          const same = (a?: RichNode, b?: RichNode) => !!a && !!b && a.type === b.type && JSON.stringify(a.content?.[0]?.type) === JSON.stringify(b.content?.[0]?.type);
+          return new Slice(Fragment.fromJSON(view.state.schema, nodes), same(before[0], nodes[0]) ? slice.openStart : 0, same(before[before.length - 1], nodes[nodes.length - 1]) ? slice.openEnd : 0);
+        } catch { return slice; }
+      }
+    },
     onUpdate: ({ editor: e }) => changed.current(e.getJSON() as RichDoc)
   }, [editable]);
   if (!editor) return <div className="rich" style={{ minHeight }} />;
@@ -125,6 +138,7 @@ export default function RichEditor({ value, onChange, editable = true, onUpload,
         <B title="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={run((c) => c.setTextAlign('center'))}><AlignCenter /></B>
         <B title="Alinhar à direita" active={editor.isActive({ textAlign: 'right' })} onClick={run((c) => c.setTextAlign('right'))}><AlignRight /></B>
         <B title="Justificar" active={editor.isActive({ textAlign: 'justify' })} onClick={run((c) => c.setTextAlign('justify'))}><AlignJustify /></B>
+        <B title="Ajustar parágrafos: junta as linhas quebradas de textos colados" onClick={() => { const json = editor.getJSON() as RichDoc, next = reflowDoc(json); if (JSON.stringify(next) !== JSON.stringify(json)) editor.chain().focus().setContent(next as never, { emitUpdate: true }).run(); }}><WrapText /></B>
       </div>
       <div className="rich-group">
         <B title="Lista com marcadores" active={on('bulletList')} onClick={run((c) => c.toggleBulletList())}><List /></B>
