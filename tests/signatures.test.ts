@@ -192,6 +192,19 @@ describe('signed exports', () => {
       expect(text).not.toContain('52998224725');
     }
   });
+  it('stamps both lines with the coordinator who is the beneficiary and signs alone', async () => {
+    const solo: SignatureManifest = { ...manifest, signers: [{ ...manifest.signers[1], step: 1 }] };
+    const f = { name: 'Francisco Gilson', phone: '5563999925840', email: '', project: 'Projeto', role: 'Coordenador do projeto' };
+    const docx = (await mammoth.extractRawText({ buffer: await travelDocx(f, { departure: '2026-10-21', signatures: solo }) })).value;
+    const pdf = (await pdfParse(await travelPdf(f, { departure: '2026-10-21', signatures: solo }))).text;
+    for (const text of [docx, pdf]) {
+      const table = text.slice(0, text.indexOf('AUTENTICIDADE DO DOCUMENTO'));
+      expect(table.split('FRANCISCO GILSON').length - 1).toBe(2);
+      expect(table).not.toMatch(/projeto\):\s*_{4}/);
+    }
+    const pending = (await mammoth.extractRawText({ buffer: await travelDocx(f, { signatures: { ...solo, status: 'pending' } }) })).value;
+    expect(pending).toContain('De acordo (Coordenador do projeto): ____');
+  });
   it('keeps the unsigned form as before', async () => {
     const docx = (await mammoth.extractRawText({ buffer: await travelDocx(b, {}) })).value;
     expect(docx).not.toContain('MANIFESTO');

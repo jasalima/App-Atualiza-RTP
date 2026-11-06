@@ -10,6 +10,7 @@ import { MinuteEditor, MinutesList } from './Minutes';
 import NotificationBell from '../NotificationBell';
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '@/lib/legal';
 import qrcode from 'qrcode-generator';
+import { form26Signer, isCoordination } from '@/lib/travel-signers';
 
 /** Legal basis shown wherever an electronic signature is given or checked. */
 export function LegalBasis({ compact }: { compact?: boolean }) {
@@ -103,12 +104,16 @@ function RequestDrawer({ projectId, kind, sourceId, scholarId, isAdmin, onClose,
     try {
       const list = await signatures.candidates(projectId); setCandidates(list);
       const member = list.find((c) => c.scholarId === scholarId);
+      // Travel of the coordinator: the beneficiary is the coordination, so they sign alone.
+      if (kind === 'travel' && member && isCoordination(member)) { setOrder([member.authUserId]); return; }
       const coord = list.find((c) => c.authUserId !== member?.authUserId && (/coordenador/i.test(c.roleLabel) || c.role === 'coordinator')) ?? list.find((c) => c.authUserId !== member?.authUserId && c.role === 'admin');
       setOrder([member?.authUserId ?? '', coord?.authUserId ?? '']);
     } catch (e) { setError(errorText(e)); }
-  }, [projectId, scholarId]);
+  }, [projectId, scholarId, kind]);
   useEffect(() => { void load(); }, [load]);
   const memberHasAccount = !!candidates?.some((c) => c.scholarId === scholarId);
+  const memberCandidate = candidates?.find((c) => c.scholarId === scholarId);
+  const solo = kind === 'travel' && !!memberCandidate && isCoordination(memberCandidate) && order.filter(Boolean).length === 1 && order[0] === memberCandidate.authUserId;
   async function createAccess() {
     setBusy(true);
     try {
@@ -139,12 +144,13 @@ function RequestDrawer({ projectId, kind, sourceId, scholarId, isAdmin, onClose,
         {isAdmin && <p><button type="button" className="btn btn-sm" disabled={busy} onClick={() => void createAccess()}>Criar acesso de assinatura</button></p>}
       </Notice>}
       {credential && <Notice tone="ok" title="Acesso criado">Envie ao membro: e-mail <b>{credential.email}</b> e senha temporária <code>{credential.password}</code>. Ela só aparece agora; no primeiro acesso ele cria a senha definitiva.</Notice>}
-      {order.map((value, i) => <label className="field" key={i}>{i === 0 ? '1º — Membro da equipe' : i === 1 ? '2º — Coordenação do projeto' : `${i + 1}º — Signatário adicional`}
+      {solo && <Notice tone="info" title="O beneficiário é o coordenador do projeto">{memberCandidate!.name} assina sozinho, uma única vez. A assinatura vale como beneficiário e como “De acordo” da coordenação, e o documento fica concluído logo depois dela.</Notice>}
+      {order.map((value, i) => <label className="field" key={i}>{solo ? 'Signatário — Beneficiário e coordenador do projeto' : i === 0 ? '1º — Membro da equipe' : i === 1 ? '2º — Coordenação do projeto' : `${i + 1}º — Signatário adicional`}
         <select value={value} onChange={(e) => setOrder(order.map((v, n) => (n === i ? e.target.value : v)))}>
           <option value="">{i < 2 ? 'Selecione' : 'Ninguém'}</option>
           {candidates.map((c) => <option key={c.authUserId} value={c.authUserId} disabled={order.includes(c.authUserId) && value !== c.authUserId}>{c.name}{c.roleLabel ? ` — ${c.roleLabel}` : ''}{c.pendingFirstAccess ? ' (primeiro acesso pendente)' : ''}</option>)}
         </select></label>)}
-      {order.length < 4 && <div><button type="button" className="btn btn-sm" onClick={() => setOrder([...order, ''])}>Adicionar signatário</button></div>}
+      {order.length < 4 && !solo && <div><button type="button" className="btn btn-sm" onClick={() => setOrder([...order, ''])}>Adicionar signatário</button></div>}
       <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ao enviar, o 1º signatário recebe no WhatsApp, pelo seu número conectado, o documento em PDF e o link. Antes de assinar, ele pode corrigir ou completar o relatório na página de assinatura; depois da primeira assinatura o conteúdo fica bloqueado.</p>
       <div className="form-foot" style={{ flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-quiet" onClick={onClose} disabled={busy}>Cancelar</button>
@@ -199,7 +205,9 @@ function Authenticity({ code }: { code: string }) {
 function Form26Preview({ view }: { view: SigningView & { document: { kind: 'travel' } } }) {
   const { beneficiary: b, report: r } = view.document, s = view.request.signers;
   const rows = r.entries.filter((e) => e.date || e.activity.trim());
-  const stamp = (step: number) => { const x = s.find((y) => y.step === step && y.status === 'signed'); return x ? <Seal s={x} /> : <span className="paper-line" />; };
+  // The coordinator who is also the beneficiary signs once, and that signature fills both lines.
+  const signedBy = (step: 1 | 2) => form26Signer(s.filter((y) => y.status === 'signed'), step, view.request.status === 'completed');
+  const stamp = (step: 1 | 2) => { const x = signedBy(step); return x ? <Seal s={x} /> : <span className="paper-line" />; };
   return <article className="paper paper-sans" aria-label="Documento a assinar">
     <header className="paper-head"><img src="/fapto-logo.png" alt="FAPTO" /><b>FUNDAÇÃO DE APOIO CIENTÍFICO E TECNOLÓGICO DO TOCANTINS</b><b>FORMULÁRIO 26<br />RELATÓRIO DE VIAGEM</b></header>
     <h4>IDENTIFICAÇÃO DO BENEFICIÁRIO</h4>
@@ -219,7 +227,7 @@ function Form26Preview({ view }: { view: SigningView & { document: { kind: 'trav
         <tr><td style={{ width: '22%' }}>Data</td><td>Atividades</td></tr>
         {(rows.length ? rows : [{ date: r.departureDate ?? '', activity: '' }]).map((e, i) => <tr key={i}><td>{e.date ? br(e.date) : ''}</td><td style={{ whiteSpace: 'pre-wrap' }}>{e.activity}</td></tr>)}
         {([[1, 'Assinatura do beneficiário:'], [2, 'De acordo (Coordenador do projeto):']] as const).map(([step, label]) => {
-          const x = s.find((y) => y.step === step && y.status === 'signed');
+          const x = signedBy(step);
           return <tr className="paper-sign" key={step}><td>Data:{x?.signedAt ? ` ${new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date(x.signedAt))}` : ''}</td><td><div className="sign-cell"><span>{label}</span>{stamp(step)}</div></td></tr>;
         })}
       </tbody>

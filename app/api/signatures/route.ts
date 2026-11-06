@@ -5,6 +5,7 @@ import { documentSource, reclaimSignerSlots, signLink, signerCandidates, type Si
 import { requestView } from '@/lib/signature-view';
 import { dispatchAfterSignature, type Delivery } from '@/lib/signature-dispatch';
 import { sameOrigin, travelError } from '@/lib/travel';
+import { isCoordination } from '@/lib/travel-signers';
 export const runtime = 'nodejs';
 
 type Row = SignerRow & { request_id: string };
@@ -45,6 +46,9 @@ export async function POST(request: Request) {
     const candidates = new Map((await signerCandidates(input.projectId)).map((c) => [c.authUserId, c]));
     const chosen = input.signers.map((id) => candidates.get(id));
     if (chosen.some((c) => !c)) throw Object.assign(new Error('Um dos signatários não tem acesso ativo a este projeto.'), { status: 400 });
+    // Form 26 needs the coordination's "De acordo": a single signer only when the beneficiary is the coordinator.
+    if (input.kind === 'travel' && chosen.length === 1 && !(chosen[0]!.scholarId === source.scholarId && isCoordination(chosen[0]!)))
+      throw Object.assign(new Error('O relatório de viagem precisa também da assinatura da coordenação. Só o coordenador que é o próprio beneficiário assina sozinho.'), { status: 400 });
     const id = crypto.randomUUID();
     try {
       await sql.transaction([

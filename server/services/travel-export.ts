@@ -1,6 +1,7 @@
 import { AlignmentType, BorderStyle, Document, HeightRule, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, Tab, TabStopType, TextRun, VerticalAlign, WidthType } from 'docx';
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
+import { form26Signer } from '../../lib/travel-signers';
 import { authenticityDocx, authenticityPdf, hasAuthenticity, manifestDocx, manifestPdf, SEAL_H_PT, SEAL_MAX_PT, sealDocx, sealPdf, signedDate, type SignatureManifest } from './signature-stamp';
 
 export type TravelBeneficiary = { name: string; phone: string; email: string; project: string; role: string };
@@ -69,8 +70,8 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     margins: { top: 0, bottom: 60, left: 108, right: 108 }, children
   });
   const inCell = (text: string, o: { bold?: boolean; center?: boolean; justify?: boolean } = {}) => para([{ text, bold: o.bold }], { after: 0, center: o.center, justify: o.justify });
-  const signature = (label: string, step: number) => {
-    const signed = fill.signatures?.signers.find((x) => x.step === step);
+  const signature = (label: string, step: 1 | 2) => {
+    const signed = form26Signer(fill.signatures?.signers ?? [], step, fill.signatures?.status === 'completed');
     return new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
       cell([inCell(signed ? `Data: ${signedDate(signed.signedAt)}` : 'Data:')], { width: DATE_COL, bottom: true }),
       cell(signed
@@ -181,8 +182,8 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const entries = travelEntries(fill);
     row('Data', 'Atividades', 23);
     for (const [d, a] of entries) row(d, a, entries.length > 1 ? 21 : 52);
-    const signRow = (label: string, step: number) => {
-      const signed = fill.signatures?.signers.find((x) => x.step === step);
+    const signRow = (label: string, step: 1 | 2) => {
+      const signed = form26Signer(fill.signatures?.signers ?? [], step, fill.signatures?.status === 'completed');
       if (!signed) return row('Data:', label, 52, true, true);
       // Label on the left, compact signature block (gov.br style) on the right of the same cell:
       // green for the beneficiary, gold for the coordination.
