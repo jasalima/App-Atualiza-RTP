@@ -24,21 +24,18 @@ const formatCpf = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 11); 
 const formatPhone = (raw: string) => { let d = raw.replace(/\D/g, ''); if (d.length >= 12 && d.startsWith('55')) d = d.slice(2); return d.length === 11 ? `(${d.slice(0, 2)}) ${d[2]} ${d.slice(3, 7)}-${d.slice(7)}` : raw; };
 const br = (d: string | null) => d ? d.split('-').reverse().join('/') : '____/____/______';
 
-/** Banknote-style seal, as printed on the document: green for the beneficiary, gold for the coordination. */
+/** Compact signature block, as printed on the document (gov.br style): green for the beneficiary, gold for the coordination. */
 function Seal({ s }: { s: SignatureSigner }) {
-  const tone = s.step === 1 ? 'member' : 'coordination', role = s.step === 1 ? 'BENEFICIÁRIO' : 'COORDENAÇÃO DO PROJETO';
+  const tone = s.step === 1 ? 'member' : 'coordination';
+  const when = s.signedAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(s.signedAt)).replace(',', '') : '';
   return <div className="seal" data-tone={tone}>
-    <div className="seal-band">{`${role} • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • `.repeat(3)}</div>
-    <div className="seal-body">
-      <img src={`/seal-${tone}.png`} alt="" width={40} height={40} />
-      <div>
-        <small>ASSINADO ELETRONICAMENTE POR:</small>
-        <b>{s.name.toLocaleUpperCase('pt-BR')}<em>{s.signedAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(s.signedAt)).replace(',', ' às') : ''}</em></b>
-        <code>Hash: {s.signatureHash}</code>
-        <span>IP da máquina: {s.ip || 'não informado'} · horário de Brasília</span>
-      </div>
+    <img src={`/seal-${tone}.png`} alt="" width={24} height={24} />
+    <div>
+      <small>Documento assinado eletronicamente</small>
+      <b>{s.name.toLocaleUpperCase('pt-BR')}</b>
+      <span>Data: {when}-0300{s.ip ? ` · IP ${s.ip}` : ''}</span>
+      {s.signatureHash && <code>Hash {s.signatureHash.slice(0, 24)}…</code>}
     </div>
-    <div className="seal-micro">{'RTP INTELIGENTE • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • '.repeat(4)}</div>
   </div>;
 }
 
@@ -70,6 +67,7 @@ export function SignaturePanel({ kind, sourceId, scholarId, dirty, onLock }: { k
     {error ? <Notice tone="warn">{error}</Notice> : !list ? <Skeleton /> : <div className="stack" style={{ gap: 12 }}>
       {current ? <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Tag tone={requestTone[current.status]}>{requestText[current.status]}</Tag>{current.verificationCode && <small className="muted">Código {current.verificationCode}</small>}</div>
+        {current.status === 'pending' && !current.signers.some((s) => s.status === 'signed') && list[list.indexOf(current) + 1]?.status === 'rejected' && <Notice tone="warn" title="Devolvido ao beneficiário para correção">{list[list.indexOf(current) + 1].closedReason}</Notice>}
         <Steps signers={current.signers} />
         {current.status === 'pending' && <div style={{ display: 'grid', gap: 8 }}>
           <button className="btn btn-block" onClick={() => void copy(current.link)}><Copy />Copiar link de assinatura</button>
@@ -271,7 +269,9 @@ export function SignPage() {
   }
   async function reject() {
     setSigning(true);
-    try { await signatures.reject(r.id, rejectReason.trim()); toast('Documento devolvido com a sua justificativa.'); setRejecting(false); setRejectReason(''); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    try {
+      const res = await signatures.reject(r.id, rejectReason.trim());
+      toast(!res.returnedTo ? 'Recusa registrada com a sua justificativa.' : res.delivery?.sent ? `Documento devolvido ao beneficiário. A justificativa foi enviada pelo WhatsApp para ${res.delivery.to}.` : `Documento devolvido ao beneficiário, mas a mensagem não saiu: ${res.delivery?.reason ?? 'envio indisponível'}.`, res.returnedTo && !res.delivery?.sent ? 'crit' : undefined); setRejecting(false); setRejectReason(''); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   const waitingTurn = r.status === 'pending' && me?.status === 'waiting';
@@ -288,6 +288,10 @@ export function SignPage() {
     {!me && view.manager && r.status === 'pending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Você está acompanhando este documento">Sua assinatura não foi solicitada nele. Os signatários estão listados ao lado.</Notice></div>}
     {r.status === 'rejected' && <div style={{ marginBottom: 16 }}><Notice tone="crit" title="Assinatura recusada">{r.closedReason}</Notice></div>}
     {r.status === 'cancelled' && <div style={{ marginBottom: 16 }}><Notice tone="mute" title="Solicitação cancelada pela coordenação">{r.closedReason}</Notice></div>}
+    {view.returned && view.canEdit && !result && <div style={{ marginBottom: 16 }}><Notice tone="warn" title={`Devolvido para correção por ${view.returned.by}${view.returned.role ? ` (${view.returned.role})` : ''}`}>
+      <p style={{ margin: '0 0 6px' }}>“{view.returned.reason}”</p>
+      Toque em <b>Alterar informações</b>, corrija o que foi pedido, salve e assine de novo. A assinatura anterior foi desconsiderada.
+    </Notice></div>}
     {me && view.identityReady === false && me.status !== 'signed' && <Notice tone="warn" title="CPF da conta ainda não confirmado">Peça à administração para conferir seu CPF em Configurações &gt; Editar acesso. Apenas o CPF vinculado ao seu próprio login poderá assinar.</Notice>}
     {doc.kind === 'rtp' && view.canEdit && !editing && <div className="rtp-review-action"><div><b>Revise o RTP antes de assinar</b><p>Você pode completar os resultados e corrigir as informações. Depois, salve e confira a versão que será assinada.</p></div><button className="btn btn-primary" onClick={startEdit}><PenLine />Revisar e editar RTP</button></div>}
 
@@ -317,7 +321,7 @@ export function SignPage() {
           {view.canEdit && !editing && <button type="button" className="btn btn-block" onClick={startEdit}><PenLine />Alterar ou inserir informações</button>}
           {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de assinar.</p>}
           {!rejecting ? <button type="button" className="btn btn-quiet btn-block" onClick={() => setRejecting(true)}><X />Não vou assinar</button> : <div className="reject-box stack" style={{ gap: 10 }}>
-            <label className="field">Por que você não vai assinar?<textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} maxLength={1000} placeholder="Ex.: a data de retorno está errada; o correto é 20/10/2026." disabled={signing} autoFocus /><small>O documento volta para a administração com esta justificativa. Escreva ao menos 5 caracteres.</small></label>
+            <label className="field">Por que você não vai assinar?<textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} maxLength={1000} placeholder="Ex.: a data de retorno está errada; o correto é 20/10/2026." disabled={signing} autoFocus /><small>{me!.step > 1 && !parallel ? 'O documento volta para o beneficiário corrigir e assinar de novo. Ele recebe esta justificativa pelo WhatsApp.' : 'A recusa fica registrada com esta justificativa para a administração.'} Escreva ao menos 5 caracteres.</small></label>
             <button type="button" className="btn btn-danger btn-block" disabled={signing || rejectReason.trim().length < 5} onClick={() => void reject()}><X />{signing ? 'Devolvendo…' : 'Devolver sem assinar'}</button>
             <button type="button" className="btn btn-quiet btn-block" disabled={signing} onClick={() => { setRejecting(false); setRejectReason(''); }}>Voltar</button>
           </div>}

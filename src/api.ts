@@ -223,7 +223,7 @@ export const signatures = {
   get: (id: string) => route<SigningView>(`/signatures/${id}`),
   saveDocument: (id: string, body: unknown) => route<unknown>(`/signatures/${id}/document`, { method: 'PUT', body: JSON.stringify(body) }),
   sign: (id: string, cpf: string, documentHash: string) => route<{ completed: boolean; verificationCode: string | null; signatureHash: string }>(`/signatures/${id}/sign`, { method: 'POST', body: JSON.stringify({ cpf, accept: true, documentHash }) }),
-  reject: (id: string, reason: string) => route(`/signatures/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  reject: (id: string, reason: string) => route<{ rejected: boolean; returnedTo: string | null; delivery: { sent: boolean; to?: string; reason?: string } | null }>(`/signatures/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   cancel: (id: string, reason: string) => route(`/signatures/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
   notify: (id: string, phone?: string, signerId?: string) => route<{ sent: boolean; to: string }>(`/signatures/${id}/notify`, { method: 'POST', body: JSON.stringify({ ...(phone ? { phone } : {}), ...(signerId ? { signerId } : {}) }) }),
   fileUrl: (id: string, format: 'pdf' | 'docx') => `/api/signatures/${id}/file?format=${format}`,

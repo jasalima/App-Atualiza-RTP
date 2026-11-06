@@ -74,7 +74,7 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
     return new TableRow({ cantSplit: true, height: { value: ROW_ENTRY, rule: HeightRule.ATLEAST }, children: [
       cell([inCell(signed ? `Data: ${signedDate(signed.signedAt)}` : 'Data:')], { width: DATE_COL, bottom: true }),
       cell(signed
-        ? [para(label, { after: 60 }), sealDocx(signed, { font: FONT, width: ACT_COL - 216 }), para('', { after: 0 })]
+        ? [para(label, { after: 60 }), sealDocx(signed, { font: FONT, width: ACT_COL - 216, verifyUrl: fill.signatures?.verifyUrl }), para('', { after: 0 })]
         : [para([{ text: `${label} ` }, { text: SIGN_LINE(label) }], { after: 0 })], { width: ACT_COL, bottom: true })
     ] });
   };
@@ -182,11 +182,11 @@ export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<
     const signRow = (label: string, step: number) => {
       const signed = fill.signatures?.signers.find((x) => x.step === step);
       if (!signed) return row('Data:', label, 52, true, true);
-      h = 76; fits(h); box(h);
+      h = 54; fits(h); box(h);
       font().text(`Data: ${signedDate(signed.signedAt)}`, tx + pad, y + h - 28, { width: c1 - 2 * pad });
       font().text(label, tx + c1 + pad, y + 5, { width: tw - c1 - 2 * pad });
-      // Banknote-style seal: green for the beneficiary, gold for the coordination.
-      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + 16, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold' });
+      // Compact signature block (gov.br style): green for the beneficiary, gold for the coordination.
+      sealPdf(doc, signed, { x: tx + c1 + pad, y: y + 16, width: tw - c1 - 2 * pad, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: fill.signatures?.verifyUrl });
       y += h;
     };
     signRow('Assinatura do beneficiário:', 1);

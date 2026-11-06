@@ -2,7 +2,7 @@ import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, Shad
 import PDFDocument from 'pdfkit';
 import { FAPTO_LOGO_PNG, FAPTO_LOGO_SIZE } from '../assets/fapto-logo';
 import type { ReportContent } from '../types.js';
-import { manifestDocx, manifestPdf, sealDocx, sealPdf, type SignatureManifest } from './signature-stamp';
+import { manifestDocx, manifestPdf, SEAL_MAX_PT, sealDocx, sealPdf, type SignatureManifest } from './signature-stamp';
 
 // Layout of the FAPTO Formulário 9 model: logo, foundation and form name centred;
 // an identification table whose first row reads "RELATÓRIO TÉCNICO PARCIAL (RTP)";
@@ -60,7 +60,7 @@ export async function toDocx(c: ReportContent, signatures?: SignatureManifest | 
       new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 360, after: 1200 }, children: [run(c.closing.placeAndDate)] }),
       centred(c.closing.scholar, false, 0),
       centred(c.closing.role, false, 0),
-      ...(signatures?.signers ?? []).flatMap((x) => [new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }), sealDocx(x, { font: 'Calibri', width: 7400 })]),
+      ...(signatures?.signers ?? []).flatMap((x) => [new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }), sealDocx(x, { font: 'Calibri', width: 7400, verifyUrl: signatures?.verifyUrl })]),
       ...(signatures?.signers.length ? manifestDocx(signatures, { font: FONT, size: 24, width: 9071 }) : [])
     ]
   }] });
@@ -112,12 +112,12 @@ export function toPdf(c: ReportContent, signatures?: SignatureManifest | null): 
     doc.y += 70;
     doc.text(c.closing.scholar, left, doc.y, { width, align: 'center' }).text(c.closing.role, { width, align: 'center' });
     if (signatures?.signers.length) {
-      // One banknote-style seal per signer, centred under the closing.
-      const sw = Math.min(width, 380);
+      // One compact signature block per signer, centred under the closing.
+      const sw = Math.min(width, SEAL_MAX_PT);
       for (const x of signatures.signers) {
-        if (doc.y + 72 > bottom()) doc.addPage();
+        if (doc.y + 48 > bottom()) doc.addPage();
         doc.y += 12;
-        doc.y += sealPdf(doc, x, { x: left + (width - sw) / 2, y: doc.y, width: sw, regular: 'Helvetica', bold: 'Helvetica-Bold' });
+        doc.y += sealPdf(doc, x, { x: left + (width - sw) / 2, y: doc.y, width: sw, regular: 'Helvetica', bold: 'Helvetica-Bold', verifyUrl: signatures.verifyUrl });
       }
       manifestPdf(doc, signatures, { x: left, width, top: 57, regular: 'Times-Roman', bold: 'Times-Bold' });
     }

@@ -25,7 +25,7 @@ export type SignatureRequest={id:string;projectId:string;kind:'travel'|'rtp'|'mi
 export type MySignature=SignatureRequest&{projectTitle:string;myStatus:SignerStatus;myStep:number};
 export type SignerCandidate={authUserId:string;role:Role;email:string;name:string;scholarId:string|null;roleLabel:string;phone:string;pendingFirstAccess:boolean};
 export type SigningDocument={kind:'travel';beneficiary:NonNullable<TravelReport['beneficiary']>;report:TravelReport}|{kind:'rtp';number:string;version:number;content:ReportContent}|{kind:'minutes';number:string;subject:string;version:number;publicCode:string;minuteId:string};
-export type SigningView={request:SignatureRequest;projectTitle:string;documentHash:string;document:SigningDocument;me:(SignatureSigner&{cpfOnFile:string|null})|null;manager:boolean;canEdit:boolean;canSign:boolean;identityReady?:boolean;mode?:'sequential'|'parallel'};
+export type SigningView={request:SignatureRequest;projectTitle:string;documentHash:string;document:SigningDocument;me:(SignatureSigner&{cpfOnFile:string|null})|null;manager:boolean;canEdit:boolean;canSign:boolean;identityReady?:boolean;mode?:'sequential'|'parallel';returned?:{by:string;role:string;reason:string}|null};
 export type VerifyResult={code:string;label:string;project:string;valid:boolean;status:string;completedAt:string|null;documentHash:string;signers:Array<{step:number;name:string;roleLabel:string;cpf:string;signedAt:string;signatureHash:string}>};
 
 // Atas de reunião ------------------------------------------------------------------------------

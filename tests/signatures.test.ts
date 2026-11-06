@@ -22,6 +22,8 @@ vi.mock('../lib/storage', () => ({ readPrivateObject: vi.fn(), signedDownloadUrl
 import { normalizeCpf, stableJson, documentSource, assertUnsigned } from '../lib/signatures';
 import { requireProject } from '../lib/authorize';
 import { POST as sign } from '../app/api/signatures/[id]/sign/route';
+import { POST as reject } from '../app/api/signatures/[id]/reject/route';
+import { dispatchAfterSignature } from '../lib/signature-dispatch';
 import { GET as verify } from '../app/api/signatures/verify/[code]/route';
 import { travelDocx, travelPdf } from '../server/services/travel-export';
 import { toPdf } from '../server/services/export';
@@ -174,14 +176,13 @@ describe('signed exports', () => {
       expect(text).toContain('Assinado eletronicamente por Francisco Gilson');
       expect(text).toContain('MANIFESTO DE ASSINATURAS ELETRÔNICAS');
       expect(text).toContain('ABCD-1234-EF56');
-      // Banknote-style seals: five audit lines, green beneficiary and gold coordination.
-      expect(text).toContain('ASSINADO ELETRONICAMENTE POR:');
+      // Compact gov.br-style block: title, name, date with IP, where to verify.
+      expect(text).toContain('Documento assinado eletronicamente');
       expect(text).toContain('ELIANE MARQUES');
-      expect(text).toContain(`Hash: ${'b'.repeat(64)}`);
-      expect(text).toMatch(/ELIANE MARQUES\s+·\s+04\/11\/2026 às 12:30:00/);
-      expect(text).toContain('IP da máquina: 200.10.20.30');
-      expect(text).toContain('BENEFICIÁRIO');
-      expect(text).toContain('COORDENAÇÃO DO PROJETO');
+      expect(text).toContain('Data: 04/11/2026 12:30:00-0300 · IP 200.10.20.30');
+      expect(text).toContain('Verifique em app.example/verificar/ABCD-1234-EF56');
+      // The full hash stays on the manifest page.
+      expect(text).toMatch(/b{30}/);
       expect(text).toContain('***.982.247-**');
       expect(text).toContain('200.10.20.30');
       expect(text).not.toContain('52998224725');
@@ -205,5 +206,30 @@ describe('travel report timestamps', () => {
     const { travelReportRow } = await import('../lib/travel');
     const row = travelReportRow({ ...travelRow, created_at: new Date('2026-11-05T19:53:00.001Z'), updated_at: new Date('2026-11-05T19:54:41.152Z') });
     expect(row.updatedAt).toBe('2026-11-05T19:54:41.152Z');
+  });
+});
+
+describe('refusal', () => {
+  const refuse = (reason: string) => reject(new Request(`https://app.example/api/signatures/${requestId}/reject`, { method: 'POST', headers: { origin: 'https://app.example' }, body: JSON.stringify({ reason }) }), { params: Promise.resolve({ id: requestId }) });
+  it('by the coordination returns the document to the beneficiary, who gets the reason on WhatsApp', async () => {
+    db({ signers: [signer(1, 'signed', { cpf: '52998224725' }), signer(2, 'pending')] });
+    mocks.user.mockReturnValue({ user: { id: 'user-2', email: 'francisco@example.com' } });
+    vi.mocked(dispatchAfterSignature).mockClear();
+    const body = await (await refuse('A data de retorno está errada.')).json();
+    expect(body.returnedTo).toMatch(/^[0-9a-f-]{36}$/);
+    const [statements] = mocks.transaction.mock.calls[0];
+    expect(statements).toHaveLength(7);
+    const reopened = mocks.calls.filter((c) => /INSERT INTO signature_signers/.test(c.q));
+    expect(reopened.map((c) => c.values.slice(1, 3).concat(c.values.at(-1)))).toEqual([[1, 'user-1', 'pending'], [2, 'user-2', 'waiting']]);
+    expect(mocks.calls.some((c) => /INSERT INTO signature_requests/.test(c.q))).toBe(true);
+    expect(dispatchAfterSignature).toHaveBeenCalledWith(body.returnedTo, 'signed', { by: 'Francisco Gilson', role: 'Coordenador do projeto', reason: 'A data de retorno está errada.' });
+  });
+  it('by the beneficiary only closes the request', async () => {
+    db({ signers: [signer(1, 'pending'), signer(2, 'waiting')] });
+    vi.mocked(dispatchAfterSignature).mockClear();
+    const body = await (await refuse('Não participei desta viagem.')).json();
+    expect(body.returnedTo).toBeNull();
+    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(3);
+    expect(dispatchAfterSignature).not.toHaveBeenCalled();
   });
 });

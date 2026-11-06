@@ -16,6 +16,11 @@ export async function GET(_request: Request, { params }: Params) {
     const source = await documentSource(String(r.project_id), r.source_kind as SignatureKind, String(r.source_id));
     const [project] = await sql`SELECT title FROM projects WHERE id=${r.project_id}::uuid`;
     const [profile] = await sql`SELECT cpf FROM signer_identities WHERE auth_user_id=${access.user.id}`;
+    // Returned by the coordination: the reason of the refusal that reopened this request for the beneficiary.
+    const [back] = r.status === 'pending' && r.mode !== 'parallel' && !access.anySigned
+      ? await sql`SELECT x.closed_reason,s.name,s.role_label FROM signature_requests x JOIN signature_signers s ON s.request_id=x.id AND s.status='rejected' AND s.step>1
+          WHERE x.source_kind=${r.source_kind} AND x.source_id=${r.source_id}::uuid AND x.status='rejected' AND x.created_at<${r.created_at} ORDER BY x.created_at DESC LIMIT 1`
+      : [];
     const document = source.minutes
       ? { kind: 'minutes' as const, number: source.minutes.content.number, subject: source.minutes.content.subject, version: source.minutes.version, publicCode: source.minutes.public_code, minuteId: source.minutes.minute_id }
       : source.travel
@@ -25,6 +30,7 @@ export async function GET(_request: Request, { params }: Params) {
       request: requestView(r, access.signers), projectTitle: String(project?.title ?? ''), documentHash: source.hash, document,
       me: access.me ? { ...signerView(access.me), cpfOnFile: profile ? maskCpf(String(profile.cpf)) : null } : null,
       manager: access.manager, canEdit: access.canEdit, identityReady: !!profile,
+      returned: back ? { by: String(back.name), role: String(back.role_label ?? ''), reason: String(back.closed_reason ?? '') } : null,
       canSign: !!profile && r.status === 'pending' && !!access.me && (r.mode === 'parallel' ? access.me.status === 'pending' : access.current?.id === access.me.id), mode: String(r.mode ?? 'sequential')
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return travelError(error); }

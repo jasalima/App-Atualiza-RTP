@@ -1,5 +1,5 @@
 import { LEGAL_BASIS, LEGAL_EVIDENCE, LEGAL_TITLE } from '../../lib/legal';
-import { AlignmentType, BorderStyle, ImageRun, Paragraph, ShadingType, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
+import { AlignmentType, BorderStyle, ImageRun, Paragraph, Table, TableCell, TableLayoutType, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import { SEAL_EMBLEM_GOLD, SEAL_EMBLEM_GREEN } from '../assets/seal-emblems';
 
 /** Electronic signatures collected for a document, printed on its last page. */
@@ -82,88 +82,59 @@ export function manifestPdf(doc: PDFKit.PDFDocument, m: SignatureManifest, o: { 
   doc.text(LEGAL_EVIDENCE, o.x, doc.y + 3, { width: o.width, align: 'justify' });
 }
 
-/* Banknote-style seal printed on each signature field ------------------------------------------ */
-// Green for the beneficiary (first signer), gold for the coordination (the following ones).
+/* Compact signature block printed on each signature field -------------------------------------- */
+// In the style of the gov.br signature: a small emblem and four short lines. Green for the
+// beneficiary (first signer), gold for the coordination. Full details stay on the manifest page.
 const SEAL = {
-  member: { role: 'BENEFICIÁRIO', dark: '1F6B45', mid: '2E8B57', light: 'EEF7F1', emblem: SEAL_EMBLEM_GREEN },
-  coordination: { role: 'COORDENAÇÃO DO PROJETO', dark: '8A6508', mid: 'C79A12', light: 'FCF6E3', emblem: SEAL_EMBLEM_GOLD }
+  member: { dark: '1F6B45', emblem: SEAL_EMBLEM_GREEN },
+  coordination: { dark: '8A6508', emblem: SEAL_EMBLEM_GOLD }
 } as const;
 export const sealTone = (s: SignedBy) => SEAL[s.step === 1 ? 'member' : 'coordination'];
-/** The audit lines of the seal; the signing date and time follow the signer's name. */
-export const sealLines = (s: SignedBy) => ({
-  title: 'ASSINADO ELETRONICAMENTE POR:',
+/** Brazil has no daylight saving time since 2019: Brasília is always UTC-3. */
+export const sealLines = (s: SignedBy, verifyUrl?: string | null) => ({
+  title: 'Documento assinado eletronicamente',
   name: s.name.toLocaleUpperCase('pt-BR'),
-  when: `${signedDate(s.signedAt)} às ${signedTime(s.signedAt)}`,
-  hash: `Hash: ${s.signatureHash}`,
-  ip: `IP da máquina: ${s.ip || 'não informado'} · horário de Brasília`
+  when: `Data: ${signedDate(s.signedAt)} ${signedTime(s.signedAt)}-0300${s.ip ? ` · IP ${s.ip}` : ''}`,
+  check: verifyUrl ? `Verifique em ${verifyUrl.replace(/^https?:\/\//, '')}` : `Hash ${s.signatureHash.slice(0, 24)}…`
 });
-const microtext = (role: string, n: number) => Array.from({ length: n }, () => `${role} • ASSINATURA ELETRÔNICA • LEI 14.063/2020 • SHA-256 • `).join('');
+/** Widest the block gets: about 7.5 cm, as a signature stamp. */
+export const SEAL_MAX_PT = 215;
 
-/** DOCX seal: a table with double frame, microtext bands, the emblem and the audit lines. */
-export function sealDocx(s: SignedBy, o: { font: string; width: number }) {
-  const t = sealTone(s), l = sealLines(s), emblemCol = 980, textCol = o.width - emblemCol;
-  const frame = { style: BorderStyle.DOUBLE, size: 6, color: t.dark }, none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
-  const run = (text: string, opts: { bold?: boolean; size?: number; color?: string; font?: string } = {}) => new TextRun({ text, bold: opts.bold, size: opts.size ?? 16, color: opts.color ?? '1A1A1A', font: opts.font ?? o.font });
-  const line = (children: TextRun[], after = 0) => new Paragraph({ spacing: { before: 0, after, line: 200 }, children });
-  const band = (text: string, fill: string, color: string) => new TableRow({ cantSplit: true, children: [new TableCell({
-    columnSpan: 2, shading: { fill, type: ShadingType.CLEAR, color: 'auto' }, margins: { top: 10, bottom: 10, left: 80, right: 80 },
-    children: [new Paragraph({ spacing: { before: 0, after: 0, line: 120 }, children: [new TextRun({ text, size: 8, color, font: 'Arial', characterSpacing: 4 })] })]
-  })] });
+/** DOCX block: emblem cell and four lines, no frame. */
+export function sealDocx(s: SignedBy, o: { font: string; width: number; verifyUrl?: string | null }) {
+  const t = sealTone(s), l = sealLines(s, o.verifyUrl), width = Math.min(o.width, SEAL_MAX_PT * 20), emblemCol = 560, textCol = width - emblemCol;
+  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const run = (text: string, opts: { bold?: boolean; size?: number; color?: string } = {}) => new TextRun({ text, bold: opts.bold, size: opts.size ?? 11, color: opts.color ?? '333333', font: o.font });
+  const line = (children: TextRun[]) => new Paragraph({ spacing: { before: 0, after: 0, line: 190 }, children });
   return new Table({
-    width: { size: o.width, type: WidthType.DXA }, columnWidths: [emblemCol, textCol], layout: TableLayoutType.FIXED,
-    borders: { top: frame, bottom: frame, left: frame, right: frame, insideHorizontal: none, insideVertical: none },
-    rows: [
-      // Microtext must stay on one line: about one character per 60 twips at 4 pt.
-      band(`${t.role} • ${microtext(t.role, 3)}`.slice(0, Math.floor(o.width / 62)), t.dark, 'FFFFFF'),
-      new TableRow({ cantSplit: true, children: [
-        new TableCell({ width: { size: emblemCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading: { fill: t.light, type: ShadingType.CLEAR, color: 'auto' }, margins: { top: 20, bottom: 20, left: 70, right: 30 },
-          children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ type: 'png', data: t.emblem, transformation: { width: 42, height: 42 } })] })] }),
-        new TableCell({ width: { size: textCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading: { fill: t.light, type: ShadingType.CLEAR, color: 'auto' }, margins: { top: 20, bottom: 20, left: 50, right: 100 },
-          children: [
-            line([run(l.title, { bold: true, size: 13, color: t.dark })]),
-            line([run(l.name, { bold: true, size: 17, color: '111111' }), run(`  ·  ${l.when}`, { size: 15, color: t.dark })], 10),
-            line([run(l.hash, { size: 12, font: 'Consolas', color: '333333' })]),
-            line([run(l.ip, { size: 13 })])
-          ] })
-      ] }),
-      band(microtext('RTP INTELIGENTE', 4).slice(0, Math.floor(o.width / 56)), t.light, t.mid)
-    ]
+    width: { size: width, type: WidthType.DXA }, columnWidths: [emblemCol, textCol], layout: TableLayoutType.FIXED,
+    borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+    rows: [new TableRow({ cantSplit: true, children: [
+      new TableCell({ width: { size: emblemCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 0, bottom: 0, left: 0, right: 60 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ type: 'png', data: t.emblem, transformation: { width: 30, height: 30 } })] })] }),
+      new TableCell({ width: { size: textCol, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [
+          line([run(l.title, { bold: true, size: 11, color: t.dark })]),
+          line([run(l.name, { bold: true, size: 14, color: '111111' })]),
+          line([run(l.when)]),
+          line([run(l.check, { size: 10 })])
+        ] })
+    ] })]
   });
 }
 
-/** PDF seal drawn as vectors (guilloché, double frame, microtext). Returns its height. */
-export function sealPdf(doc: PDFKit.PDFDocument, s: SignedBy, o: { x: number; y: number; width: number; regular: string; bold: string }) {
-  const t = sealTone(s), l = sealLines(s), { x, y, width: w } = o, h = 56, band = 7;
+/** PDF block: emblem and four lines, about 7.5 × 1.2 cm. Returns its height. */
+export function sealPdf(doc: PDFKit.PDFDocument, s: SignedBy, o: { x: number; y: number; width: number; regular: string; bold: string; verifyUrl?: string | null }) {
+  const t = sealTone(s), l = sealLines(s, o.verifyUrl), w = Math.min(o.width, SEAL_MAX_PT), h = 32, e = 24;
+  const { x, y } = o, tx = x + e + 6, tw = w - e - 6;
   doc.save();
-  doc.roundedRect(x, y, w, h, 4).fill(`#${t.light}`);
-  // Guilloché: interlaced sine waves clipped to the seal, as on banknotes.
-  doc.save(); doc.roundedRect(x, y, w, h, 4).clip();
-  for (let k = 0; k < 10; k++) {
-    const base = y + band + 5 + k * 4.4, amp = 2.2 + (k % 3), period = 26 + (k % 4) * 7, phase = k * 1.3;
-    doc.moveTo(x, base);
-    for (let px = 0; px <= w; px += 2) doc.lineTo(x + px, base + amp * Math.sin(px / period * 2 * Math.PI + phase));
-    doc.lineWidth(0.35).strokeOpacity(0.22).stroke(`#${t.mid}`);
-  }
-  doc.restore();
-  doc.strokeOpacity(1);
-  // Microtext bands.
-  doc.rect(x, y, w, band).fill(`#${t.dark}`);
-  doc.font(o.regular).fontSize(4.6).fillColor('#ffffff').text(`${t.role} • ${microtext(t.role, 4)}`, x + 4, y + 1.8, { width: w - 8, height: 6, lineBreak: false, characterSpacing: 0.4 });
-  doc.font(o.regular).fontSize(3.6).fillColor(`#${t.mid}`).text(microtext('RTP INTELIGENTE', 6), x + 4, y + h - 6, { width: w - 8, height: 5, lineBreak: false });
-  // Double frame.
-  doc.lineWidth(1.1).strokeColor(`#${t.dark}`).roundedRect(x, y, w, h, 4).stroke();
-  doc.lineWidth(0.4).roundedRect(x + 2.2, y + 2.2, w - 4.4, h - 4.4, 3).stroke();
-  // Emblem and the audit lines (name followed by the signing date and time).
-  const e = 36; doc.image(t.emblem, x + 8, y + band + (h - band - e) / 2 - 2, { width: e, height: e });
-  const tx = x + e + 15, tw = w - e - 23; let ty = y + band + 4;
-  doc.font(o.bold).fontSize(6).fillColor(`#${t.dark}`).text(l.title, tx, ty, { width: tw, lineBreak: false, characterSpacing: 0.3 }); ty += 7.6;
-  // Shrink a long name so the name and the date always share one line.
-  const when = `  ·  ${l.when}`, whenW = doc.font(o.regular).fontSize(7).widthOfString(when);
-  let size = 8.6; while (size > 6 && doc.font(o.bold).fontSize(size).widthOfString(l.name) + whenW > tw) size -= 0.2;
-  doc.font(o.bold).fontSize(size).fillColor('#111111').text(l.name, tx, ty, { lineBreak: false, continued: true });
-  doc.font(o.regular).fontSize(7).fillColor(`#${t.dark}`).text(when, { lineBreak: false }); ty += 10.4;
-  doc.font('Courier').fontSize(5.2).fillColor('#333333').text(l.hash, tx, ty, { width: tw, lineBreak: false }); ty += 7.6;
-  doc.font(o.regular).fontSize(6).fillColor('#1a1a1a').text(l.ip, tx, ty, { width: tw, lineBreak: false });
+  doc.image(t.emblem, x, y + (h - e) / 2, { width: e, height: e });
+  doc.font(o.bold).fontSize(5.8).fillColor(`#${t.dark}`).text(l.title, tx, y + 1, { width: tw, lineBreak: false });
+  // A long name shrinks instead of wrapping.
+  let size = 7.6; while (size > 5.6 && doc.font(o.bold).fontSize(size).widthOfString(l.name) > tw) size -= 0.2;
+  doc.font(o.bold).fontSize(size).fillColor('#111111').text(l.name, tx, y + 8.4, { width: tw, lineBreak: false });
+  doc.font(o.regular).fontSize(5.8).fillColor('#333333').text(l.when, tx, y + 17.2, { width: tw, lineBreak: false });
+  doc.font(o.regular).fontSize(5.3).fillColor('#555555').text(l.check, tx, y + 24.4, { width: tw, lineBreak: false });
   doc.restore(); doc.fillColor('black').strokeColor('black');
   return h;
 }

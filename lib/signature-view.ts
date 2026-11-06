@@ -79,3 +79,31 @@ export function completedMessage(o: { name: string; label: string; code: string;
     '🗂️ Uma cópia também está salva em *Documentos*, no RTP Inteligente.'
   ].join('\n');
 }
+
+/** WhatsApp text that returns the document to the beneficiary when the coordination refuses to sign. */
+export function returnedMessage(o: { name: string; label: string; link: string; by: string; role?: string; reason: string; firstAccess: boolean }) {
+  return [
+    '↩️ *DOCUMENTO DEVOLVIDO PARA CORREÇÃO* · RTP Inteligente',
+    '',
+    `Olá, ${o.name.split(/\s+/)[0]}! 👋 Esta mensagem é automática.`,
+    '',
+    `📄 *Documento:* ${o.label}`,
+    `🙅 *${o.by}*${o.role ? ` (${o.role})` : ''} não assinou e devolveu o documento com esta justificativa:`,
+    '',
+    `💬 _${o.reason.replace(/[_*]/g, '')}_`,
+    '',
+    RULE,
+    '✏️ *O que fazer:*',
+    '1. Abra o link abaixo.',
+    '2. Toque em *Alterar ou inserir informações*.',
+    '3. Corrija os campos indicados e, se for o caso, acrescente ou troque fotos.',
+    '4. Toque em *Salvar alterações*, confira e assine de novo com o seu CPF.',
+    RULE,
+    '',
+    '⚠️ A sua assinatura anterior foi desconsiderada. Depois que você assinar de novo, o documento volta para a coordenação.',
+    '',
+    `👉 ${o.link}`,
+    '',
+    o.firstAccess ? '🔐 Entre com o seu e-mail e a senha temporária enviada pela administração.' : '🔐 Entre com o seu e-mail e a sua senha do RTP Inteligente.'
+  ].join('\n');
+}

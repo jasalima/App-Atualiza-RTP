@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { evolutionForProject } from './connectivity-config';
 import { sql } from './db';
 import { documentSource, loadRequest, signedFile, signerCandidates, signLink, verifyLink } from './signatures';
-import { completedMessage, signatureMessage } from './signature-view';
+import { completedMessage, returnedMessage, signatureMessage } from './signature-view';
 import { putPrivateObject } from './storage';
 import { minuteVerifyLink } from './minutes-core';
 import { moduleSender, ownWhatsApp } from './whatsapp-connections';
@@ -21,7 +21,8 @@ async function log(projectId: string, userId: string, requestId: string, action:
 }
 
 export type Delivery = { sent: boolean; to?: string; reason?: string };
-export async function dispatchAfterSignature(requestId: string, event: 'created' | 'signed' = 'signed'): Promise<Delivery | void> {
+export type ReturnNote = { by: string; role: string; reason: string };
+export async function dispatchAfterSignature(requestId: string, event: 'created' | 'signed' = 'signed', returned?: ReturnNote): Promise<Delivery | void> {
   const { request, signers } = await loadRequest(requestId);
   if (request.mode === 'parallel') return dispatchParallel(request, signers, event);
   const projectId = String(request.project_id), creator = String(request.created_by);
@@ -58,11 +59,13 @@ export async function dispatchAfterSignature(requestId: string, event: 'created'
 
   const caption = completed
     ? completedMessage({ name: target.name, label: source.label, code: String(request.verification_code), verifyUrl: verifyLink(String(request.verification_code)), signers })
+    : returned
+    ? returnedMessage({ name: next!.name, label: source.label, link: signLink(requestId), by: returned.by, role: returned.role, reason: returned.reason, firstAccess: target.pendingFirstAccess })
     : signatureMessage({ name: next!.name, label: source.label, link: signLink(requestId), firstAccess: target.pendingFirstAccess, from, signers, currentStep: next!.step });
   const file = { ...pdf, filename: completed ? pdf.filename.replace(/\.pdf$/, '-assinado.pdf') : pdf.filename };
   const result = await provider.sendDocument(connection.instance, connection.token, file, digits(target.phone), caption);
   const to = `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`;
-  await log(projectId, creator, requestId, completed ? 'send_signed' : 'notify_signer', { to, messageId: result.messageId });
+  await log(projectId, creator, requestId, completed ? 'send_signed' : returned ? 'notify_returned' : 'notify_signer', { to, messageId: result.messageId });
   return { sent: true, to };
 }
 
