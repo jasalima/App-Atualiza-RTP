@@ -136,3 +136,8 @@
   .drawer .form-foot{flex-direction:column-reverse;align-items:stretch}
   .drawer .form-foot .btn{width:100%;height:44px}
 }
+/* Devolver sem assinar: justificativa no próprio quadro, sem janela do navegador. */
+.reject-box{padding:12px;border:1px solid #e0aaa2;border-radius:var(--r-sm);background:var(--alarm-wash)}
+.reject-box textarea{min-height:96px}
+.reject-box .btn-danger{border-color:var(--alarm);background:var(--sheet)}
+@media (max-width:600px){.edit-actions{flex-direction:column-reverse}.edit-actions .btn{width:100%;height:46px}}

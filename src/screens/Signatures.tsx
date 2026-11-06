@@ -234,6 +234,7 @@ export function SignPage() {
   const { id } = useParams(), toast = useToast(), navigate = useNavigate();
   const [view, setView] = useState<SigningView | null>(null), [error, setError] = useState('');
   const [editing, setEditing] = useState(false), [draft, setDraft] = useState<TravelReport | ReportContent['sections'] | null>(null), [saving, setSaving] = useState(false);
+  const [rejecting, setRejecting] = useState(false), [rejectReason, setRejectReason] = useState('');
   const [cpf, setCpf] = useState(''), [accept, setAccept] = useState(false), [signing, setSigning] = useState(false), [result, setResult] = useState<{ completed: boolean; code: string | null } | null>(null);
   const load = useCallback(() => signatures.get(id!).then((v) => { setView(v); setError(''); }, (e) => setError(errorText(e))), [id]);
   useEffect(() => { void load(); }, [load]);
@@ -269,9 +270,9 @@ export function SignPage() {
     catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   async function reject() {
-    const reason = prompt('Por que você não vai assinar? A coordenação verá esta resposta.');
-    if (reason === null) return;
-    try { await signatures.reject(r.id, reason); toast('Recusa registrada.'); await load(); } catch (x) { toast(errorText(x), 'crit'); }
+    setSigning(true);
+    try { await signatures.reject(r.id, rejectReason.trim()); toast('Documento devolvido com a sua justificativa.'); setRejecting(false); setRejectReason(''); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    catch (x) { toast(errorText(x), 'crit'); } finally { setSigning(false); }
   }
   const waitingTurn = r.status === 'pending' && me?.status === 'waiting';
 
@@ -300,7 +301,7 @@ export function SignPage() {
             {([['results', '1.1 Objetivos propostos versus alcançados'], ['comparison', '1.2 Resultados esperados versus obtidos'], ['additional', '2. Informações adicionais']] as const).map(([k, label]) =>
               <label className="field" key={k}>{label}<textarea value={(draft as ReportContent['sections'])[k]} onChange={(e) => setDraft({ ...(draft as ReportContent['sections']), [k]: e.target.value })} style={{ minHeight: 200 }} /></label>)}
           </section>}
-          <div className="head-actions"><button className="btn btn-quiet" disabled={saving} onClick={() => { setEditing(false); setDraft(null); }}>Descartar</button><button className="btn btn-primary" disabled={saving || (!dirty && doc.kind !== 'travel')} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar alterações'}</button></div>
+          <div className="head-actions edit-actions"><button className="btn btn-quiet" disabled={saving} onClick={() => { setEditing(false); setDraft(null); }}>Descartar</button><button className="btn btn-primary" disabled={saving || (!dirty && doc.kind !== 'travel')} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar alterações'}</button></div>
         </> : doc.kind === 'travel' ? <Form26Preview view={view as SigningView & { document: { kind: 'travel' } }} /> : doc.kind === 'minutes'
           ? <iframe className="paper-frame" title={`${doc.number} em PDF`} src={`${signatures.fileUrl(r.id, 'pdf')}#view=FitH`} />
           : <RtpPreview content={doc.content} />}
@@ -315,7 +316,11 @@ export function SignPage() {
           <button className="btn btn-go btn-block" disabled={signing || dirty || !accept || cpf.replace(/\D/g, '').length !== 11}>{signing ? 'Assinando…' : 'Assinar documento'}</button>
           {view.canEdit && !editing && <button type="button" className="btn btn-block" onClick={startEdit}><PenLine />Alterar ou inserir informações</button>}
           {dirty && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Salve as alterações antes de assinar.</p>}
-          <button type="button" className="btn btn-quiet btn-block" onClick={() => void reject()}><X />Não vou assinar</button>
+          {!rejecting ? <button type="button" className="btn btn-quiet btn-block" onClick={() => setRejecting(true)}><X />Não vou assinar</button> : <div className="reject-box stack" style={{ gap: 10 }}>
+            <label className="field">Por que você não vai assinar?<textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} maxLength={1000} placeholder="Ex.: a data de retorno está errada; o correto é 20/10/2026." disabled={signing} autoFocus /><small>O documento volta para a administração com esta justificativa. Escreva ao menos 5 caracteres.</small></label>
+            <button type="button" className="btn btn-danger btn-block" disabled={signing || rejectReason.trim().length < 5} onClick={() => void reject()}><X />{signing ? 'Devolvendo…' : 'Devolver sem assinar'}</button>
+            <button type="button" className="btn btn-quiet btn-block" disabled={signing} onClick={() => { setRejecting(false); setRejectReason(''); }}>Voltar</button>
+          </div>}
           <p className="muted hash" style={{ fontSize: 11.5, margin: 0, overflowWrap: 'anywhere' }}>Hash SHA-256 do conteúdo: {view.documentHash}</p>
           <LegalBasis compact />
         </form>}
