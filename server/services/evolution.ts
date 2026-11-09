@@ -38,14 +38,14 @@ const NOT_ON_WHATSAPP = /NUMBER_NOT_ON_WHATSAPP|not.*(exist|registered|on whatsa
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Evolution {
   constructor(private base = process.env.EVOLUTION_API_URL || '', private masterKey = process.env.EVOLUTION_API_KEY || '', private fetcher: typeof fetch = fetch, private wait: (ms: number) => Promise<unknown> = pause) {}
-  private async call(path: string, key: string, body?: unknown) {
+  private async call(path: string, key: string, body?: unknown, method?: 'PUT' | 'POST') {
     if (!key) throw new EvolutionError('Configure as credenciais da Evolution API no servidor.', 503);
     let endpoint: URL;
     try { endpoint = new URL(`${this.base.replace(/\/$/, '')}${path}`); } catch { throw new EvolutionError('Configure a URL da Evolution API no servidor.', 503); }
     if (endpoint.protocol !== 'https:') throw new EvolutionError('A Evolution API deve usar HTTPS.', 503);
     let response: Response;
     try {
-      response = await this.fetcher(endpoint, { method: body === undefined ? 'GET' : 'POST', headers: { apikey: key, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(20000) });
+      response = await this.fetcher(endpoint, { method: method ?? (body === undefined ? 'GET' : 'POST'),headers: { apikey: key, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(20000) });
     } catch { throw new EvolutionError('Evolution indisponível. Tente novamente para consultar a mesma instância.'); }
     if (!response.ok) {
       const detail = providerDetail(await response.json().catch(() => null));
@@ -74,6 +74,32 @@ export class Evolution {
   async sendText(instance: string, token: string, number: string, text: string) {
     return this.deliver(instance, token, number, (to) => this.call(`/message/sendText/${encodeURIComponent(instance)}`, token, { number: to, text }));
   }
+  /** Restarts the instance's WhatsApp session with its saved credentials (v2: POST, v1: PUT). */
+  async restart(instance: string, token: string) {
+    const path = `/instance/restart/${encodeURIComponent(instance)}`;
+    for (const key of [token, this.masterKey].filter(Boolean)) {
+      for (const method of ['POST', 'PUT'] as const) {
+        try { await this.call(path, key, method === 'POST' ? {} : undefined, method); return true; }
+        catch (error) {
+          const p = error instanceof EvolutionError ? error.providerStatus : undefined;
+          if (p === 404 || p === 405) continue;          // other API version: other method
+          if (p === 401 || p === 403) break;             // this key may not restart: try the next
+          if (error instanceof EvolutionError && /não confirmou/.test(error.message)) return true; // empty body: accepted
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+  /** Restart, then wait (up to ~20 s) for the session to report open again. */
+  async revive(instance: string, token: string) {
+    if (!(await this.restart(instance, token))) return false;
+    for (let i = 0; i < 10; i++) {
+      await this.wait(2000);
+      if (await this.state(instance, token).catch(() => null) === 'open') { await this.wait(1500); return true; }
+    }
+    return false;
+  }
   /** The form of the number WhatsApp knows; null when none; undefined when the check itself failed. */
   async resolveNumber(instance: string, token: string, number: string): Promise<string | null | undefined> {
     try {
@@ -90,9 +116,14 @@ export class Evolution {
   private async deliver(instance: string, token: string, raw: string, send: (to: string) => Promise<{ key?: { id?: unknown } }>) {
     const number = waNumber(raw);
     if (!/^[1-9]\d{9,14}$/.test(number)) throw new EvolutionError('Telefone de destino inválido. Confira DDI, DDD e número no cadastro.', 400);
-    let to = number, checked = false, last: EvolutionError | undefined;
+    let to = number, checked = false, restarted = false, last: EvolutionError | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt) await this.wait(1500 * attempt);
+      // A dead socket behind an "open" state (Connection Closed) does not heal by retrying:
+      // restart the session once (saved credentials, no QR Code) and wait for it to reopen.
+      if (attempt && !restarted && TRANSIENT.test(last?.detail ?? '')) {
+        restarted = true;
+        if (!(await this.revive(instance, token))) throw new EvolutionError('A sessão do WhatsApp de envio caiu e não voltou sozinha. Abra Conectividade, use Reconectar e escaneie o QR Code.', 409, last?.providerStatus, last?.detail);
+      } else if (attempt) await this.wait(1500 * attempt);
       try {
         const id = (await send(to))?.key?.id;
         if (typeof id !== 'string' || !id) throw new EvolutionError('O servidor não confirmou o identificador do envio.');

@@ -28,11 +28,22 @@ describe('WhatsApp numbers', () => {
 });
 
 describe('Resilient delivery', () => {
-  it('retries a session hiccup and succeeds without bothering the user', async () => {
-    const { fetcher, evo } = make(bad({ response: { message: ['Error: Connection Closed'] } }), Response.json(sent));
+  it('restarts a dead session (Connection Closed) and delivers', async () => {
+    const { fetcher, evo } = make(bad({ response: { message: ['Error: Connection Closed'] } }), Response.json({ instance: { state: 'connecting' } }), Response.json({ instance: { state: 'connecting' } }), Response.json({ instance: { state: 'open' } }), Response.json(sent));
     expect(await evo.sendText('inst', 'tok', '(63) 98402-8033', 'oi')).toEqual({ messageId: 'MSG1' });
-    expect(paths(fetcher)).toEqual(['/message/sendText/inst', '/message/sendText/inst']);
+    expect(paths(fetcher)).toEqual(['/message/sendText/inst', '/instance/restart/inst', '/instance/connectionState/inst', '/instance/connectionState/inst', '/message/sendText/inst']);
+    expect(fetcher.mock.calls[1][1]!.method).toBe('POST');
     expect(bodyOf(fetcher, 0).number).toBe('5563984028033');
+  });
+  it('falls back to PUT restart on older Evolution versions', async () => {
+    const { fetcher, evo } = make(bad({ response: { message: ['Connection Closed'] } }), Response.json({}, { status: 404 }), Response.json({ instance: { state: 'open' } }), Response.json({ instance: { state: 'open' } }), Response.json(sent));
+    expect(await evo.sendText('inst', 'tok', '5563984028033', 'oi')).toEqual({ messageId: 'MSG1' });
+    expect(fetcher.mock.calls[2][1]!.method).toBe('PUT');
+  });
+  it('asks for a new QR Code when the restarted session does not reopen', async () => {
+    const closed = Array.from({ length: 10 }, () => Response.json({ instance: { state: 'close' } }));
+    const { evo } = make(bad({ response: { message: ['Connection Closed'] } }), Response.json({ instance: {} }), ...closed);
+    await expect(evo.sendText('inst', 'tok', '5563984028033', 'oi')).rejects.toMatchObject({ status: 409, message: expect.stringContaining('QR Code') });
   });
   it('switches to the form of the number WhatsApp knows', async () => {
     const { fetcher, evo } = make(
@@ -47,15 +58,9 @@ describe('Resilient delivery', () => {
     const { evo } = make(bad({ response: { message: [{ exists: false }] } }), Response.json([{ exists: false }, { exists: false }]));
     await expect(evo.sendText('inst', 'tok', '5563984028033', 'oi')).rejects.toMatchObject({ status: 422, message: expect.stringContaining('não tem WhatsApp ativo') });
   });
-  it('after three refusals reports a disconnected sender', async () => {
-    const closed = () => bad({ response: { message: ['Connection Closed'] } });
-    const { fetcher, evo } = make(closed(), closed(), closed(), Response.json({ instance: { state: 'close' } }));
-    await expect(evo.sendText('inst', 'tok', '5563984028033', 'oi')).rejects.toMatchObject({ status: 409, message: expect.stringContaining('desconectado') });
-    expect(paths(fetcher).filter((p) => p.startsWith('/message/'))).toHaveLength(3);
-  });
   it('after three refusals with the session open, gives the provider reason', async () => {
-    const closed = () => bad({ response: { message: ['Timed Out'] } });
-    const { evo } = make(closed(), closed(), closed(), Response.json({ instance: { state: 'open' } }));
+    const t = () => bad({ response: { message: ['Timed Out'] } });
+    const { evo } = make(t(), Response.json({ instance: {} }), Response.json({ instance: { state: 'open' } }), t(), t(), Response.json({ instance: { state: 'open' } }));
     const error = await evo.sendText('inst', 'tok', '5563984028033', 'oi').catch((e) => e);
     expect(error).toBeInstanceOf(EvolutionError);
     expect(error.message).toContain('Timed Out');
