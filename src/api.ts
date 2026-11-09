@@ -210,6 +210,8 @@ export const users = {
     route<{ saved: boolean; reboundSignatures: number }>(`/users/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify(body) }),
   setStatus: (id: string, action: 'revoke' | 'restore') =>
     route<{ success: boolean }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action }) }),
+  resetPassword: (id: string) =>
+    route<{ email: string; temporaryPassword: string; sessionsRevoked: boolean }>(`/users/${encodeURIComponent(id)}/password`, { method: 'POST' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     route<{ success: boolean }>('/users/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
 };

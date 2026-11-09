@@ -38,6 +38,15 @@ export default function SettingsPage() {
     try{await users.setStatus(user.authUserId,action);await managed.reload();toast(action==='revoke'?'Acesso revogado.':'Acesso restaurado.');}
     catch(x){toast((x as Error).message,'crit');}
   }
+  async function resetPassword(target:ManagedUser){
+    if(!window.confirm(`Redefinir a senha de ${target.name}? Uma senha temporária será gerada, as sessões abertas dessa conta serão encerradas e a pessoa terá de criar uma nova senha no próximo acesso.`))return;
+    try{
+      const result=await users.resetPassword(target.authUserId);
+      setCredential({email:result.email,password:result.temporaryPassword});setOpen(true);
+      await managed.reload();
+      toast(result.sessionsRevoked?'Senha redefinida e sessões encerradas. Entregue a senha temporária por um canal seguro.':'Senha redefinida. Entregue a senha temporária por um canal seguro.');
+    }catch(x){toast((x as Error).message,'crit');}
+  }
   const row = (ok: boolean, title: string, detail: string, missing: string) => <li><div>{title}<small>{ok ? detail : missing}</small></div><Tag tone={ok ? 'ok' : 'crit'}>{ok ? 'Configurado' : 'Pendente'}</Tag></li>;
   return <>
     <PageHead title="Configurações" description="Administração de acessos e estado das integrações do ambiente." actions={<button className="btn" onClick={() => setIdentityAccount({ id: user.id, name: user.name })}><KeyRound />Confirmar meu CPF</button>} />
@@ -46,7 +55,7 @@ export default function SettingsPage() {
       <div className="panel-head"><div><h2>Usuários da aplicação</h2><p>Crie acessos com senha temporária, habilite módulos para cada pessoa e revogue contas sem apagar o histórico.</p></div><button className="btn btn-primary" onClick={start} disabled={!projects.length}><Plus/>Cadastrar usuário</button></div>
       {managed.error?<div className="panel-pad"><Notice tone="crit">{managed.error}</Notice></div>:managed.loading?<Skeleton/>:!managed.data?.length?<Empty title="Nenhum usuário gerenciado">Cadastre o primeiro acesso depois de criar um projeto.</Empty>:
       <div className="table-scroll"><table className="ledger users-ledger"><thead><tr><th>Usuário</th><th>Perfil</th><th>Escopo</th><th>Módulos</th><th>Situação</th><th>Cadastro</th><th></th></tr></thead><tbody>
-        {managed.data.map((item)=><tr key={item.authUserId}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role?roleLabel[item.role]:'Sem vínculo'}</td><td>{item.scholarName||item.projectTitle||'Todos os projetos'}</td><td><ModuleChips role={item.role} extra={item.modules??[]} /></td><td>{item.revoked?<Tag tone="crit">Revogado</Tag>:item.mustChangePassword?<Tag tone="warn">Troca pendente</Tag>:<Tag tone="ok">Ativo</Tag>}</td><td>{fmt(item.createdAt)}</td><td className="row-actions">{item.role!=='admin'&&item.projectId&&<button className="btn btn-small" onClick={()=>setEditing(item)}><KeyRound/>Editar acesso</button>}{item.role!=='admin'&&<button className="btn btn-small" onClick={()=>void status(item)}>{item.revoked?<><UserRoundCheck/>Restaurar</>:<><UserRoundX/>Revogar</>}</button>}</td></tr>)}
+        {managed.data.map((item)=><tr key={item.authUserId}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role?roleLabel[item.role]:'Sem vínculo'}</td><td>{item.scholarName||item.projectTitle||'Todos os projetos'}</td><td><ModuleChips role={item.role} extra={item.modules??[]} /></td><td>{item.revoked?<Tag tone="crit">Revogado</Tag>:item.mustChangePassword?<Tag tone="warn">Troca pendente</Tag>:<Tag tone="ok">Ativo</Tag>}</td><td>{fmt(item.createdAt)}</td><td className="row-actions">{item.role!=='admin'&&item.projectId&&<button className="btn btn-small" onClick={()=>setEditing(item)}><KeyRound/>Editar acesso</button>}{item.role!=='admin'&&!item.revoked&&<button className="btn btn-small" onClick={()=>void resetPassword(item)}><KeyRound/>Redefinir senha</button>}{item.role!=='admin'&&<button className="btn btn-small" onClick={()=>void status(item)}>{item.revoked?<><UserRoundCheck/>Restaurar</>:<><UserRoundX/>Revogar</>}</button>}</td></tr>)}
       </tbody></table></div>}
     </section>
     {error ? <Notice tone="crit">{error}</Notice> : !data ? <Skeleton /> : <div className="stack">
