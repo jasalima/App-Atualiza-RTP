@@ -131,7 +131,13 @@ export async function travelDocx(b: TravelBeneficiary, fill: TravelFill = {}) {
   }));
 }
 
-export function travelPdf(b: TravelBeneficiary, fill: TravelFill = {}): Promise<Buffer> {
+/** Tabs and control characters have no glyph in the PDF standard fonts and garble the line. */
+const drawable = (t?: string) => t?.replace(/[\t\v\f ]/g, ' ').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '');
+
+export function travelPdf(b: TravelBeneficiary, filled: TravelFill = {}): Promise<Buffer> {
+  b = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, drawable(v)!.replace(/\s+/g, ' ').trim()])) as TravelBeneficiary;
+  const fill: TravelFill = { ...filled, origin: drawable(filled.origin), destination: drawable(filled.destination), objective: drawable(filled.objective),
+    entries: filled.entries?.map((e) => ({ ...e, activity: drawable(e.activity)! })) };
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: { top: 31, bottom: 50, left: 85, right: 81 } });
     const chunks: Buffer[] = [];

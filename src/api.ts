@@ -25,9 +25,11 @@ export async function route<T>(path: string, options: RequestInit = {}): Promise
   return requestJson<T>(path, options);
 }
 
-export async function download(path: string, filename: string) {
+/** Without a filename, the one the server names in Content-Disposition is kept. */
+export async function download(path: string, filename?: string) {
   const response = await fetch(`/api${path}`, { credentials: 'include' });
   if (!response.ok) throw new Error('Não foi possível gerar o arquivo. Tente novamente.');
+  filename ||= /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'arquivo';
   const url = URL.createObjectURL(await response.blob()), link = document.createElement('a');
   link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
 }
@@ -37,10 +39,12 @@ const projectColumns = (x: Record<string, any>) => ({
   coordinator: x.coordinator, starts_on: x.startsOn, ends_on: x.endsOn, description: x.description ?? '',
   general_objective: x.generalObjective ?? '', city: x.city, status: x.status ?? 'active', agreement: x.agreement ?? ''
 });
+const oneLine = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const scholarColumns = (x: Record<string, any>) => ({
   ...(x.phone !== undefined ? { phone: x.phone } : {}), ...(x.email !== undefined ? { email: x.email } : {}), ...(x.cpf !== undefined ? { cpf: String(x.cpf).replace(/\D/g, '') } : {}),
   ...(x.affiliation === 'UFT' || x.affiliation === 'Externo' ? { affiliation: x.affiliation } : {}),
-  full_name: x.fullName, role_area: x.roleArea ?? '', scholarship_type: x.scholarshipType ?? '',
+  // Pasted from spreadsheets these come with tabs and line breaks that garble the PDF forms.
+  full_name: x.fullName === undefined ? undefined : oneLine(x.fullName), role_area: oneLine(x.roleArea), scholarship_type: oneLine(x.scholarshipType),
   starts_on: x.startsOn, ends_on: x.endsOn, status: x.status ?? 'active', notes: x.notes ?? ''
 });
 
@@ -194,7 +198,8 @@ export const travelReports = {
   save: (projectId: string, id: string, body: Omit<TravelReport, 'id' | 'projectId' | 'scholarId' | 'scholarName' | 'createdAt' | 'updatedAt' | 'beneficiary'>) =>
     route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`, { method: 'PUT', body: JSON.stringify(body) }),
   remove: (projectId: string, id: string, opts: { cancelSignatures?: boolean; reason?: string } = {}) => route(`/travel/reports/${id}?projectId=${projectId}`, { method: 'DELETE', body: JSON.stringify(opts) }),
-  export: (projectId: string, id: string, format: 'pdf' | 'docx', filename: string) => download(`/travel/reports/${id}/export?projectId=${projectId}&format=${format}`, filename)
+  // Named by the server: PCDP_<beneficiary>_<trip start>[_assinado].
+  export: (projectId: string, id: string, format: 'pdf' | 'docx') => download(`/travel/reports/${id}/export?projectId=${projectId}&format=${format}`)
 };
 
 export const settings = {

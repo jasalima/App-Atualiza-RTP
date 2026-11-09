@@ -14,7 +14,7 @@ export async function beneficiaryOf(projectId: string, scholarId: string) {
   const [row] = await sql`SELECT s.full_name,s.role_area,s.phone,s.email,p.title,p.agreement FROM scholars s JOIN projects p ON p.id=s.project_id
     WHERE s.id=${scholarId}::uuid AND s.project_id=${projectId}::uuid AND s.deleted_at IS NULL AND p.deleted_at IS NULL`;
   if (!row) throw Object.assign(new Error('Beneficiário não encontrado neste projeto.'), { status: 404 });
-  const beneficiary: TravelBeneficiary = { name: String(row.full_name), role: String(row.role_area), phone: String(row.phone), email: String(row.email), project: String(row.agreement || "").trim() || String(row.title) };
+  const beneficiary: TravelBeneficiary = { name: flat(row.full_name), role: flat(row.role_area), phone: flat(row.phone), email: flat(row.email), project: flat(row.agreement) || flat(row.title) };
   return beneficiary;
 }
 export const travelEntry = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')), activity: z.string().max(2000) });
@@ -57,9 +57,17 @@ export async function loadTravelReport(projectId: string, reportId: string, writ
 }
 export const travelFill = (r: ReturnType<typeof travelReportRow>): TravelFill => ({ origin: r.origin, destination: r.destination, departure: r.departureDate, returnDate: r.returnDate, payment: r.paymentDate, objective: r.objective, entries: r.entries });
 
-export async function travelFile(beneficiary: TravelBeneficiary, format: 'pdf' | 'docx', fill?: TravelFill) {
-  return { buffer: await (format === 'pdf' ? travelPdf(beneficiary, fill) : travelDocx(beneficiary, fill)), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: `formulario-26-${beneficiary.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 90)}.${format}` };
+/** PCDP_<beneficiary>_<trip start dd-mm-aaaa>[_assinado].<ext>: ASCII only, so it is safe in headers and archives. */
+export function travelFileName(name: string, format: 'pdf' | 'docx', fill?: TravelFill) {
+  const who = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 90) || 'beneficiario';
+  const date = fill?.departure ? `_${fill.departure.slice(0, 10).split('-').reverse().join('-')}` : '';
+  return `PCDP_${who}${date}${fill?.signatures?.status === 'completed' ? '_assinado' : ''}.${format}`;
 }
+export async function travelFile(beneficiary: TravelBeneficiary, format: 'pdf' | 'docx', fill?: TravelFill) {
+  return { buffer: await (format === 'pdf' ? travelPdf(beneficiary, fill) : travelDocx(beneficiary, fill)), mime: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', filename: travelFileName(beneficiary.name, format, fill) };
+}
+/** Text pasted from spreadsheets brings tabs and line breaks the PDF fonts cannot draw. */
+const flat = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 export function travelError(error: unknown) {
   if (error instanceof z.ZodError) return Response.json({ error: 'Confira os campos informados.' }, { status: 400 });
   const e = error as { status?: number; message?: string; code?: string };

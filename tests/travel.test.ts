@@ -7,7 +7,7 @@ import { openCredential, sealCredential } from '../server/services/travel-creden
 const { access, query } = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn() }));
 vi.mock('../lib/authorize', () => ({ requireProject: access }));
 vi.mock('../lib/db', () => ({ sql: query }));
-import { loadTravel } from '../lib/travel';
+import { loadTravel, travelFileName } from '../lib/travel';
 
 const b: TravelBeneficiary = { name: 'Maria de Teste', phone: '5563999990000', email: 'maria@example.com', project: 'Projeto de teste', role: 'Pesquisadora' };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -95,5 +95,17 @@ describe('WhatsApp credentials', () => {
     expect(openCredential(encrypted, 'user-a:project-a')).toBe('private-api-key');
     expect(() => openCredential(encrypted, 'user-b:project-a')).toThrow();
     expect(() => openCredential(encrypted, 'user-a:project-b')).toThrow();
+  });
+});
+
+describe('Formulário 26 — PCDP', () => {
+  it('names the file with the beneficiary, the trip start and the signed state', () => {
+    expect(travelFileName('Francisco Gilson Rebouças Pôrto Júnior', 'pdf', { departure: '2026-09-22' })).toBe('PCDP_Francisco_Gilson_Reboucas_Porto_Junior_22-09-2026.pdf');
+    expect(travelFileName('Maria de Teste', 'docx', { departure: '2026-09-22', signatures: { status: 'completed' } as never })).toBe('PCDP_Maria_de_Teste_22-09-2026_assinado.docx');
+    expect(travelFileName('Maria de Teste', 'pdf')).toBe('PCDP_Maria_de_Teste.pdf');
+  });
+  it('prints a role pasted with a tab instead of garbling it', async () => {
+    const pdf = await pdfParse(await travelPdf({ ...b, role: '\tCoordenação geral' }));
+    expect(pdf.text).toContain('Função no projeto/convênio: Coordenação geral');
   });
 });

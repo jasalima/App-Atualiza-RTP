@@ -32,7 +32,7 @@ export default function TravelReportEditor() {
       toast(status === 'finalized' && r.status !== 'finalized' ? 'Relatório concluído.' : status === 'draft' && r.status === 'finalized' ? 'Relatório reaberto para edição.' : 'Relatório salvo.');
     } catch (e) { toast(errorText(e), 'crit'); } finally { setBusy(false); }
   }
-  const file = (format: 'pdf' | 'docx') => travelReports.export(project!.id, r.id, format, `Formulario-26-${(r.scholarName ?? 'membro').replace(/\s+/g, '-')}${r.destination ? `-${r.destination.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''}.${format}`).catch((e) => toast(errorText(e), 'crit'));
+  const file = (format: 'pdf' | 'docx') => travelReports.export(project!.id, r.id, format).catch((e) => toast(errorText(e), 'crit'));
   const b = r.beneficiary;
 
   return <>

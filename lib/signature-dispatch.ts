@@ -15,6 +15,8 @@ import { externalRecipient } from './external-signatures';
 //   to whoever opened the request, ready to attach to the FAPTO accountability.
 // A failure here never undoes a signature: it is written to the audit trail and the
 // team can still send the link or download the file from the signature panel.
+/** The signed file's name; Form 26 already names itself "…_assinado" once completed. */
+export const signedName = (filename: string) => /[_-]assinad[oa]\.pdf$/i.test(filename) ? filename : filename.replace(/\.pdf$/, '-assinado.pdf');
 const digits = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 10 || d.length === 11 ? `55${d}` : d; };
 async function log(projectId: string, userId: string, requestId: string, action: string, metadata: Record<string, string | number>) {
   await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${userId},${projectId}::uuid,${action},'signature_request',${requestId},${JSON.stringify(metadata)}::jsonb)`;
@@ -39,7 +41,7 @@ export async function dispatchAfterSignature(requestId: string, event: 'created'
     await putPrivateObject(key, pdf.buffer, 'application/pdf');
     const [doc] = await sql`INSERT INTO documents(project_id,scholar_id,kind,category,title,description,original_name,mime_type,size_bytes,storage_key,sha256,extraction_status,created_by,version)
       VALUES(${projectId}::uuid,${source.scholarId}::uuid,'project_document','report',${`${source.label} — assinado`},${`Assinado eletronicamente por ${signed.map((s) => s.name).join(' e ')}. Código de verificação ${request.verification_code}.`},
-        ${pdf.filename.replace(/\.pdf$/, '-assinado.pdf')},'application/pdf',${pdf.buffer.length},${key},${sha256},'not_applicable',${creator},1)
+        ${signedName(pdf.filename)},'application/pdf',${pdf.buffer.length},${key},${sha256},'not_applicable',${creator},1)
       ON CONFLICT (storage_key) DO UPDATE SET updated_at=now() RETURNING id`;
     await sql`UPDATE signature_requests SET archived_document_id=${doc.id}::uuid WHERE id=${requestId}::uuid`;
     await log(projectId, creator, requestId, 'archive_signed', { documentId: String(doc.id) });
@@ -62,7 +64,7 @@ export async function dispatchAfterSignature(requestId: string, event: 'created'
     : returned
     ? returnedMessage({ name: next!.name, label: source.label, link: signLink(requestId), by: returned.by, role: returned.role, reason: returned.reason, firstAccess: target.pendingFirstAccess })
     : signatureMessage({ name: next!.name, label: source.label, link: signLink(requestId), firstAccess: target.pendingFirstAccess, from, signers, currentStep: next!.step });
-  const file = { ...pdf, filename: completed ? pdf.filename.replace(/\.pdf$/, '-assinado.pdf') : pdf.filename };
+  const file = { ...pdf, filename: completed ? signedName(pdf.filename) : pdf.filename };
   const result = await provider.sendDocument(connection.instance, connection.token, file, digits(target.phone), caption);
   const to = `•••• ${target.phone.replace(/\D/g, '').slice(-4)}`;
   await log(projectId, creator, requestId, completed ? 'send_signed' : returned ? 'notify_returned' : 'notify_signer', { to, messageId: result.messageId });
