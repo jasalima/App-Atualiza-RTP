@@ -118,26 +118,33 @@ export function MinuteEditor() {
   const change = (patch: Partial<MinuteDraft>) => { setDraft((d) => (d ? { ...d, ...patch } : d)); setDirty(true); };
 
   // Autosave two seconds after the last change; one save at a time.
-  const saving$ = useRef(false), latest = useRef(draft), numberRef = useRef<string | undefined>(undefined);
+  const saving$ = useRef<Promise<boolean> | null>(null), latest = useRef(draft), numberRef = useRef<string | undefined>(undefined), savedDraft = useRef<MinuteDraft | null>(null);
   numberRef.current = view?.number;
   latest.current = draft;
-  const save = useCallback(async (quiet = false) => {
-    if (!latest.current || saving$.current) return false;
-    saving$.current = true; setSaving(true);
-    const sent = latest.current;
+  // A save requested while another runs waits for it and then saves what is still unsaved, so
+  // Finalizar / Encaminhar always act on the latest text (never silently skipped).
+  const save = useCallback(async (quiet = false): Promise<boolean> => {
+    if (saving$.current) { const ok = await saving$.current; if (!ok) return false; if (latest.current === savedDraft.current) return true; return save(quiet); }
+    if (!latest.current) return false;
+    const run = doSave(quiet); saving$.current = run;
+    try { return await run; } finally { saving$.current = null; }
+  }, [id, toast]); // eslint-disable-line react-hooks/exhaustive-deps
+  const doSave = async (quiet: boolean) => {
+    setSaving(true);
+    const sent = latest.current!;
     try { const r = await minutesApi.save(id!, sent); setSavedAt(r.savedAt);
       // First save: the ata receives its number now.
-      if (r.number && numberRef.current !== r.number) { numberRef.current = r.number; setView((v) => (v ? { ...v, number: r.number } : v)); toast(`Ata numerada: ${r.number}.`); } if (latest.current === sent) setDirty(false); if (!quiet) toast('Ata salva.'); return true; }
+      if (r.number && numberRef.current !== r.number) { numberRef.current = r.number; setView((v) => (v ? { ...v, number: r.number } : v)); toast(`Ata numerada: ${r.number}.`); } savedDraft.current = sent; if (latest.current === sent) setDirty(false); if (!quiet) toast('Ata salva.'); return true; }
     catch (e) { toast(errorText(e), 'crit'); return false; }
-    finally { saving$.current = false; setSaving(false); }
-  }, [id, toast]);
+    finally { setSaving(false); }
+  };
   // Automatic save: quick on the first change of an unnumbered ata (it gets its number), then every 2 s after the last change.
   useEffect(() => { if (!dirty || !editable) return; const t = setTimeout(() => void save(true), view && !view.number.includes('Nº') ? 600 : 2000); return () => clearTimeout(t); }, [draft, dirty, editable, save]);
   useEffect(() => { const warn = (e: BeforeUnloadEvent) => { if (dirty) e.preventDefault(); }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn); }, [dirty]);
 
   async function act(fn: () => Promise<unknown>, done: string) {
     setBusy(true);
-    try { if (dirty && editable && !(await save(true))) return; await fn(); toast(done); await load(); }
+    try { if (editable && (dirty || saving$.current) && !(await save(true))) return; await fn(); toast(done); await load(); }
     catch (e) { toast(errorText(e), 'crit'); } finally { setBusy(false); }
   }
   const upload = (asImage: boolean) => async (file: File) => (await minutesApi.upload(id!, file, asImage)).src;
