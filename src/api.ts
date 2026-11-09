@@ -190,6 +190,15 @@ export const documents = {
   }
 };
 
+export type FaptoEmailSettings = { recipients: string[]; cc: string[]; subject: string; body: string; saved: boolean; provider: { ready: boolean; from: string }; placeholders: Record<string, string> };
+export type FaptoEmailPreview = { preview: true; to: string[]; cc: string[]; from: string; ready: boolean; subject: string; body: string; lastSentAt: string | null; files: string[] };
+// Signed Formulário 26 reports e-mailed to the FAPTO analyst (Resend), with the project's message model.
+export const faptoEmail = {
+  settings: (projectId: string) => route<FaptoEmailSettings>(`/email/settings?projectId=${projectId}`),
+  save: (projectId: string, body: { recipients: string[]; cc: string[]; subject: string; body: string }) => route<FaptoEmailSettings>('/email/settings', { method: 'PUT', body: JSON.stringify({ projectId, ...body }) }),
+  preview: (projectId: string, reportIds: string[]) => route<FaptoEmailPreview>('/email/travel', { method: 'POST', body: JSON.stringify({ projectId, reportIds, preview: true }) }),
+  send: (projectId: string, reportIds: string[], subject: string, body: string) => route<{ sent: true; to: string[] }>('/email/travel', { method: 'POST', body: JSON.stringify({ projectId, reportIds, subject, body }) })
+};
 // Filled Formulário 26 reports (prestação de contas de diárias e passagens).
 export const travelReports = {
   list: (projectId: string) => route<TravelReport[]>(`/travel/reports?projectId=${projectId}`),

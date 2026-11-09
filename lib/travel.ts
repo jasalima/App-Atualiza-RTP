@@ -33,7 +33,9 @@ export const travelReportRow = (r: Record<string, unknown>) => ({
   origin: String(r.origin ?? ''), destination: String(r.destination ?? ''), departureDate: iso(r.departure_date), returnDate: iso(r.return_date), paymentDate: iso(r.payment_date),
   objective: String(r.objective ?? ''), entries: (r.entries ?? []) as Array<{ date: string; activity: string }>, photos: (r.photos ?? []) as TravelPhoto[], status: String(r.status),
   // ISO strings: String(Date) is not parseable by Postgres and drops the milliseconds.
-  createdAt: stamp(r.created_at), updatedAt: stamp(r.updated_at)
+  createdAt: stamp(r.created_at), updatedAt: stamp(r.updated_at),
+  // Only in the project list: latest signature request and last e-mail to the FAPTO.
+  ...(r.signature_status !== undefined ? { signatureStatus: r.signature_status ? String(r.signature_status) : null, emailedAt: r.emailed_at ? stamp(r.emailed_at) : null } : {})
 });
 
 /** A photo of the "Registro fotográfico" page, stored as JPEG in the private bucket. */
