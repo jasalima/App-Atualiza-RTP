@@ -8,7 +8,7 @@ import { emailConfig, EmailError, sendEmail, type EmailAttachment } from '../ser
 // Signed Formulário 26 reports e-mailed to the FAPTO analyst through Resend, with a message
 // model per project. Replies go to whoever sent it.
 
-export const DEFAULT_SUBJECT = 'Prestação de contas de viagem (Formulário 26) — {{beneficiarios}} — {{projeto}}';
+export const DEFAULT_SUBJECT = 'PCDP — Relatório de viagem assinado — {{beneficiarios}} — {{periodo}}';
 export const DEFAULT_BODY = `Prezada colaboradora,
 
 Encaminho, em anexo, {{quantidade}} relatório(s) de viagem (Formulário 26) do projeto {{projeto}}, assinado(s) eletronicamente:
