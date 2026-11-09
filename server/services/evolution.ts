@@ -34,6 +34,7 @@ export function providerDetail(body: unknown): string {
 }
 // Baileys failures that a fresh attempt usually clears (Evolution v2 reports them as HTTP 400).
 const TRANSIENT = /connection (closed|lost|failure)|timed? ?out|socket|not connected|stream errored|precondition|rate.?limit|ECONNRESET|EAI_AGAIN/i;
+export const DEAD = /connection closed|logged ?out|not connected/i;
 const NOT_ON_WHATSAPP = /NUMBER_NOT_ON_WHATSAPP|not.*(exist|registered|on whatsapp)/i;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Evolution {
@@ -75,60 +76,40 @@ export class Evolution {
     return this.deliver(instance, token, number, (to) => this.call(`/message/sendText/${encodeURIComponent(instance)}`, token, { number: to, text }));
   }
   /**
-   * Does the session really answer? The reported state stays "open" when the device was unlinked
-   * on the phone or the socket died; a lookup through the socket tells the truth.
-   * true: it answered; false: the session is dead; null: could not tell.
+   * Ends this instance's WhatsApp session for good (the instance and its key stay, ready for a
+   * new QR Code). Evolution cannot log out a dead socket that still reports "open" (Connection
+   * Closed), and its delete logs out first; so in that case the session is restarted ONCE, the app
+   * waits for it to be live, logs it out, and confirms it is closed. Never a restart loop.
    */
-  async probe(instance: string, token: string): Promise<boolean | null> {
-    try { await this.call(`/chat/whatsappNumbers/${encodeURIComponent(instance)}`, token, { numbers: ['5500000000000'] }); return true; }
-    catch (error) {
-      if (!(error instanceof EvolutionError) || error.providerStatus === undefined) return null;
-      return TRANSIENT.test(error.detail ?? '') || /logged ?out|not connected|closed/i.test(error.detail ?? '') ? false : null;
-    }
-  }
-  /** Ends the WhatsApp session of this instance (the instance and its key remain, ready for a new QR Code). */
   async logout(instance: string, token: string) {
-    const path = `/instance/logout/${encodeURIComponent(instance)}`;
-    for (const key of [token, this.masterKey].filter(Boolean)) {
-      try { await this.call(path, key, undefined, 'DELETE'); return; }
-      catch (error) {
-        const p = error instanceof EvolutionError ? error.providerStatus : undefined;
-        if (p === 401 || p === 403) continue;
-        if (error instanceof EvolutionError && /não confirmou/.test(error.message)) return; // accepted, empty body
-        if (p === 404 && !/connection/i.test(error instanceof EvolutionError ? error.detail ?? '' : '')) return; // nothing to end
-        // A dead socket cannot log out (Connection Closed): restarting it makes the server
-        // notice the unlinked device and drop the stale session.
-        if (await this.restart(instance, token)) return;
-        throw error;
-      }
-    }
-    throw new EvolutionError('O servidor WhatsApp não aceitou a desconexão. Tente novamente.', 502);
-  }
-  /** Restarts the instance's WhatsApp session with its saved credentials (v2: POST, v1: PUT). */
-  async restart(instance: string, token: string) {
-    const path = `/instance/restart/${encodeURIComponent(instance)}`;
-    for (const key of [token, this.masterKey].filter(Boolean)) {
-      for (const method of ['POST', 'PUT'] as const) {
-        try { await this.call(path, key, method === 'POST' ? {} : undefined, method); return true; }
+    const attempt = async () => {
+      for (const key of [token, this.masterKey].filter(Boolean)) {
+        try { await this.call(`/instance/logout/${encodeURIComponent(instance)}`, key, undefined, 'DELETE'); return true; }
         catch (error) {
-          const p = error instanceof EvolutionError ? error.providerStatus : undefined;
-          if (p === 404 || p === 405) continue;          // other API version: other method
-          if (p === 401 || p === 403) break;             // this key may not restart: try the next
-          if (error instanceof EvolutionError && /não confirmou/.test(error.message)) return true; // empty body: accepted
+          if (!(error instanceof EvolutionError)) throw error;
+          if (error.providerStatus === 401 || error.providerStatus === 403) continue;
+          if (/não confirmou/.test(error.message)) return true;      // accepted, empty body
           return false;
         }
       }
-    }
-    return false;
-  }
-  /** Restart, then wait (up to ~20 s) for the session to report open again. */
-  async revive(instance: string, token: string) {
-    if (!(await this.restart(instance, token))) return false;
-    for (let i = 0; i < 10; i++) {
+      return false;
+    };
+    const closed = async () => (await this.state(instance, token).catch(() => 'close')) === 'close';
+    if (await closed()) return;
+    if (await attempt() && await this.settled(closed)) return;
+    // Dead socket: one restart to get a live one, then log it out while it is live.
+    await this.call(`/instance/restart/${encodeURIComponent(instance)}`, token, {}, 'POST').catch(() => this.call(`/instance/restart/${encodeURIComponent(instance)}`, token, undefined, 'PUT')).catch(() => null);
+    for (let i = 0; i < 8; i++) {
       await this.wait(2000);
-      if (await this.state(instance, token).catch(() => null) === 'open') { await this.wait(1500); return true; }
+      const state = await this.state(instance, token).catch(() => null);
+      if (state === 'close') return;
+      if (state === 'open' && await attempt() && await this.settled(closed)) return;
     }
-    return false;
+    throw new EvolutionError('O servidor WhatsApp não conseguiu encerrar esta sessão. No celular, abra WhatsApp → Aparelhos conectados e remova o aparelho; depois clique em Atualizar estado.', 502);
+  }
+  private async settled(check: () => Promise<boolean>) {
+    for (let i = 0; i < 4; i++) { if (await check()) return true; await this.wait(1500); }
+    return check();
   }
   /** The form of the number WhatsApp knows; null when none; undefined when the check itself failed. */
   async resolveNumber(instance: string, token: string, number: string): Promise<string | null | undefined> {
@@ -146,14 +127,9 @@ export class Evolution {
   private async deliver(instance: string, token: string, raw: string, send: (to: string) => Promise<{ key?: { id?: unknown } }>) {
     const number = waNumber(raw);
     if (!/^[1-9]\d{9,14}$/.test(number)) throw new EvolutionError('Telefone de destino inválido. Confira DDI, DDD e número no cadastro.', 400);
-    let to = number, checked = false, restarted = false, last: EvolutionError | undefined;
+    let to = number, checked = false, last: EvolutionError | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
-      // A dead socket behind an "open" state (Connection Closed) does not heal by retrying:
-      // restart the session once (saved credentials, no QR Code) and wait for it to reopen.
-      if (attempt && !restarted && TRANSIENT.test(last?.detail ?? '')) {
-        restarted = true;
-        if (!(await this.revive(instance, token))) throw new EvolutionError('A sessão do WhatsApp de envio caiu e não voltou sozinha. Abra Conectividade, use Reconectar e escaneie o QR Code.', 409, last?.providerStatus, last?.detail);
-      } else if (attempt) await this.wait(1500 * attempt);
+      if (attempt) await this.wait(1500 * attempt);
       try {
         const id = (await send(to))?.key?.id;
         if (typeof id !== 'string' || !id) throw new EvolutionError('O servidor não confirmou o identificador do envio.');
@@ -167,6 +143,9 @@ export class Evolution {
         // so never resend it automatically.
         if (p === undefined || (p !== 400 && p !== 429 && p < 500)) throw error;
         last = error;
+        // A dead session (Connection Closed) does not heal by retrying, and restarting it behind
+        // the user's back reconnects the phone (sync notices). Say so and let them reconnect.
+        if (DEAD.test(detail)) throw new EvolutionError('A sessão do WhatsApp de envio caiu (Connection Closed). Abra Conectividade e clique em Reconectar meu WhatsApp para gerar um novo QR Code.', 409, p, detail);
         if (p === 400 && !checked && !TRANSIENT.test(detail)) {
           checked = true;
           const known = await this.resolveNumber(instance, token, number);

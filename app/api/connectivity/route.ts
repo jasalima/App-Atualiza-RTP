@@ -4,19 +4,10 @@ import { requireProject } from '../../../lib/authorize';
 import { requireModule } from '../../../lib/modules';
 import { sameOrigin, travelError } from '../../../lib/travel';
 import { connectivityConfig, evolutionForProject, saveConnectivity } from '../../../lib/connectivity-config';
-import { ownWhatsApp, provisionProjectWhatsApp, provisionWhatsApp } from '../../../lib/whatsapp-connections';
+import { ownWhatsApp, provisionProjectWhatsApp, provisionWhatsApp, sessionBroken } from '../../../lib/whatsapp-connections';
 const projectSchema = z.string().uuid();
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'private, no-store' };
-type Provider = Awaited<ReturnType<typeof evolutionForProject>>;
-// Logout; when the dead socket only allowed a restart, the revived session is logged out again.
-async function logoutFully(provider: Provider, instance: string, token: string) {
-  await provider.logout(instance, token);
-  for (let i = 0; i < 4 && await provider.state(instance, token).catch(() => 'close') === 'open'; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    await provider.logout(instance, token).catch(() => {});
-  }
-}
 export async function GET(request: Request) {
   try {
     const projectId = projectSchema.parse(new URL(request.url).searchParams.get('projectId'));
@@ -37,7 +28,7 @@ export async function GET(request: Request) {
           result.state = await provider.state(connection.instance, connection.token);
           // "open" is not enough: after the device is unlinked on the phone the server keeps
           // reporting it. Only a session that answers counts as connected.
-          if (result.state === 'open' && await provider.probe(connection.instance, connection.token) === false) {
+          if (result.state === 'open' && await sessionBroken(projectId, session.user.id)) {
             result.state = 'stale';
             result.stateError = 'A sessão deste WhatsApp foi encerrada no celular ou caiu, embora o servidor ainda a mostre como conectada. Clique em Reconectar meu WhatsApp e escaneie o novo QR Code.';
           }
@@ -76,15 +67,17 @@ export async function POST(request: Request) {
     if (!connection) return Response.json({ error: 'Crie sua conexão individual primeiro.' }, { status: 409, headers });
     const provider = await evolutionForProject(body.projectId);
     if (body.action === 'disconnect') {
-      await logoutFully(provider, connection.instance, connection.token);
+      await provider.logout(connection.instance, connection.token);
       await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${body.projectId}::uuid,'whatsapp_disconnect','whatsapp_connection',${connection.instance},'{}'::jsonb)`.catch(() => {});
       return Response.json({ disconnected: true }, { headers });
     }
     if (await provider.state(connection.instance, connection.token) === 'open') {
-      if (await provider.probe(connection.instance, connection.token) !== false) return Response.json({ connected: true, qr: null }, { headers });
-      // Stale session: end it so the server issues a new QR Code.
-      await logoutFully(provider, connection.instance, connection.token);
+      if (!(await sessionBroken(body.projectId, user.id))) return Response.json({ connected: true, qr: null }, { headers });
+      // Broken session: end it so the server issues a new QR Code.
+      await provider.logout(connection.instance, connection.token);
     }
-    return Response.json(await provider.connect(connection.instance, connection.token), { headers });
+    const result = await provider.connect(connection.instance, connection.token);
+    await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${body.projectId}::uuid,'whatsapp_connected','whatsapp_connection',${connection.instance},'{}'::jsonb)`.catch(() => {});
+    return Response.json(result, { headers });
   } catch (error) { return travelError(error); }
 }

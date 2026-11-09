@@ -4,7 +4,7 @@ vi.mock('../lib/db', () => ({ sql: (...a: unknown[]) => { mocks.sql(...a); retur
 vi.mock('../lib/authorize', () => ({ requireProject: mocks.access }));
 vi.mock('../lib/modules', () => ({ requireModule: mocks.access }));
 vi.mock('../lib/travel', () => ({ sameOrigin: () => {}, travelError: (error: { status?: number; message?: string }) => Response.json({ error: error.message }, { status: error.status || 500 }) }));
-vi.mock('../lib/whatsapp-connections', () => ({ ownWhatsApp: mocks.own, provisionWhatsApp: mocks.provision, provisionProjectWhatsApp: mocks.batch }));
+vi.mock('../lib/whatsapp-connections', () => ({ ownWhatsApp: mocks.own, provisionWhatsApp: mocks.provision, provisionProjectWhatsApp: mocks.batch, sessionBroken: mocks.probe }));
 vi.mock('../lib/connectivity-config', () => ({ connectivityConfig:mocks.config, saveConnectivity:mocks.save, evolutionForProject: async () => ({ state: mocks.state, connect: mocks.connect, probe: mocks.probe, logout: mocks.logout }) }));
 vi.mock('../server/services/evolution', () => ({ Evolution: class { state = mocks.state; connect = mocks.connect; } }));
 import { GET, POST, PUT } from '../app/api/connectivity/route';
@@ -13,14 +13,14 @@ const request = (action: string) => new Request('https://app.example/api/travel/
 beforeEach(() => { Object.values(mocks).forEach(fn => fn.mockReset()); mocks.access.mockResolvedValue({ user: { id: 'current-user' },role:'coordinator' }); mocks.config.mockResolvedValue({url:'https://evolution.example',key:'private-master',source:'project'}); });
 describe('WhatsApp connection authorization', () => {
   it('reports a session the phone unlinked as interrupted, not connected', async () => {
-    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValue('open'); mocks.probe.mockResolvedValue(false);
+    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValue('open'); mocks.probe.mockResolvedValue(true);
     const body = await (await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`))).json();
     expect(body).toMatchObject({ state: 'stale', configured: false });
-    mocks.probe.mockResolvedValue(true);
+    mocks.probe.mockResolvedValue(false);
     expect(await (await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`))).json()).toMatchObject({ state: 'open', configured: true });
   });
   it('reconnecting a stale session logs it out and returns a new QR Code', async () => {
-    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValueOnce('open').mockResolvedValue('close'); mocks.probe.mockResolvedValue(false); mocks.connect.mockResolvedValue({ qr: 'data:image/png;base64,AA', connected: false });
+    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValueOnce('open').mockResolvedValue('close'); mocks.probe.mockResolvedValue(true); mocks.connect.mockResolvedValue({ qr: 'data:image/png;base64,AA', connected: false });
     expect(await (await POST(request('connect'))).json()).toEqual({ qr: 'data:image/png;base64,AA', connected: false });
     expect(mocks.logout).toHaveBeenCalledWith('inst', 'tok');
   });

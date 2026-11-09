@@ -66,3 +66,16 @@ export async function moduleSender(projectId: string, module: 'minutes_sender', 
   }
   return { userId: null, connection: null, provider, designated };
 }
+
+/**
+ * Evolution keeps reporting "open" for a session whose socket died or whose device was removed on
+ * the phone. The truth is in this account's own sends: when the latest one failed with a dead
+ * session (Connection Closed) and nothing succeeded or reconnected since, the session is broken.
+ */
+export async function sessionBroken(projectId: string, userId: string) {
+  const [row] = await sql`SELECT action, metadata::text AS meta FROM audit_logs
+    WHERE user_id=${userId} AND project_id=${projectId}::uuid
+      AND action IN ('notify_signer','notify_returned','send_signed','send_document','notify_failed','send_document_failed','dispatch_skipped','whatsapp_disconnect','whatsapp_connected')
+    ORDER BY created_at DESC LIMIT 1`;
+  return !!row && /connection closed|logged ?out/i.test(String(row.meta ?? '')) && ['notify_failed', 'send_document_failed', 'dispatch_skipped'].includes(String(row.action));
+}
