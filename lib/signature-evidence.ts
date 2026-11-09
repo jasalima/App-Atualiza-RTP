@@ -45,11 +45,32 @@ let cached: { priv: KeyObject; pub: KeyObject; keyId: string; pem: string } | nu
 /** Ed25519 key from EVIDENCE_SIGNING_KEY (PKCS#8, PEM or base64 DER). Without it, evidence is recorded unsigned. */
 export function serverKey() {
   if (cached !== undefined) return cached;
-  const raw = process.env.EVIDENCE_SIGNING_KEY?.trim();
+  const raw = cleanKey(process.env.EVIDENCE_SIGNING_KEY ?? '');
   if (!raw) return (cached = null);
-  const priv = raw.includes('BEGIN') ? createPrivateKey(raw.replace(/\\n/g, '\n')) : createPrivateKey({ key: Buffer.from(raw, 'base64'), format: 'der', type: 'pkcs8' });
-  const pub = createPublicKey(priv), der = pub.export({ format: 'der', type: 'spki' }) as Buffer;
-  return (cached = { priv, pub, keyId: sha256(der).slice(0, 16).toUpperCase(), pem: String(pub.export({ format: 'pem', type: 'spki' })) });
+  try {
+    const priv = parseKey(raw);
+    if (priv.asymmetricKeyType !== 'ed25519') throw new Error(`tipo ${priv.asymmetricKeyType}`);
+    const pub = createPublicKey(priv), der = pub.export({ format: 'der', type: 'spki' }) as Buffer;
+    return (cached = { priv, pub, keyId: sha256(der).slice(0, 16).toUpperCase(), pem: String(pub.export({ format: 'pem', type: 'spki' })) });
+  } catch (error) {
+    // A malformed key must never stop anyone from signing: the evidence is still recorded and
+    // chained, only without the server's Ed25519 seal, and the problem shows in the logs.
+    console.error(`EVIDENCE_SIGNING_KEY inválida (${(error as Error).message}); evidências serão gravadas sem a assinatura do servidor.`);
+    return (cached = null);
+  }
+}
+/** Tolerates how a secret is often pasted: NAME= prefix, quotes, spaces and line breaks. */
+export function cleanKey(value: string) {
+  let v = value.trim().replace(/^EVIDENCE_SIGNING_KEY\s*=\s*/, '').trim();
+  if (v.length > 1 && /^["'`]/.test(v) && v.endsWith(v[0])) v = v.slice(1, -1).trim();
+  return v.includes('BEGIN') ? v.replace(/\\n/g, '\n') : v.replace(/\s+/g, '');
+}
+function parseKey(v: string) {
+  if (v.includes('BEGIN')) return createPrivateKey(v);
+  const bytes = /^[0-9a-f]+$/i.test(v) && v.length % 2 === 0 ? Buffer.from(v, 'hex') : Buffer.from(v.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  // A bare 32-byte Ed25519 seed is wrapped in its PKCS#8 envelope.
+  const der = bytes.length === 32 ? Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), bytes]) : bytes;
+  return createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
 }
 export const resetServerKeyForTests = () => { cached = undefined; };
 export function signEvidence(text: string) {

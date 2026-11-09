@@ -7,7 +7,7 @@ vi.mock('../lib/db', () => ({ sql: Object.assign(async () => state.rows, { trans
 vi.mock('../lib/auth', () => ({ auth: { getSession: async () => ({ data: null }) } }));
 import { sha256 } from '../lib/hash';
 import { CONSENT_TEXT, CONSENT_TEXTS, CONSENT_VERSION, isConsentVersion } from '../lib/legal';
-import { checkEvidence, consentEvidence, evidenceText, evidenceVerdict, GENESIS, maskCpfDigits, PROCEDURE_VERSION, resetServerKeyForTests, signEvidence, verifyEvidenceSignature, type SignatureEvidence } from '../lib/signature-evidence';
+import { checkEvidence, cleanKey, consentEvidence, serverKey, evidenceText, evidenceVerdict, GENESIS, maskCpfDigits, PROCEDURE_VERSION, resetServerKeyForTests, signEvidence, verifyEvidenceSignature, type SignatureEvidence } from '../lib/signature-evidence';
 import { signingSessionCheck, MAX_SIGNING_SESSION_HOURS } from '../lib/signature-session';
 
 const key = generateKeyPairSync('ed25519');
@@ -117,4 +117,25 @@ describe('sessão usada para assinar', () => {
   it('recusa sessão de administrador personificando outra conta', () => {
     expect(() => signingSessionCheck({ id: 's', createdAt: '2026-11-06T11:00:00Z', impersonatedBy: 'admin-1' }, now)).toThrow(/personificação/);
   });
+});
+
+describe('chave do servidor colada de formas diferentes', () => {
+  const der = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }) as Buffer;
+  const b64 = der.toString('base64');
+  beforeEach(() => { resetServerKeyForTests(); vi.unstubAllEnvs(); });
+  it.each([
+    ['pura', b64], ['com aspas', `"${b64}"`], ['com espaços e quebra de linha', `  ${b64.slice(0, 20)}\n${b64.slice(20)}  `],
+    ['com o nome da variável', `EVIDENCE_SIGNING_KEY=${b64}`], ['semente de 32 bytes', der.subarray(-32).toString('base64')]
+  ])('aceita a chave %s', (_label, value) => {
+    vi.stubEnv('EVIDENCE_SIGNING_KEY', value);
+    expect(serverKey()?.keyId).toMatch(/^[0-9A-F]{16}$/);
+  });
+  it('chave inválida não impede a assinatura: grava sem o selo do servidor', () => {
+    vi.stubEnv('EVIDENCE_SIGNING_KEY', 'isto-nao-e-uma-chave');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(serverKey()).toBeNull();
+    expect(signEvidence('texto')).toEqual({ signature: null, keyId: null, publicKey: null });
+    expect(spy).toHaveBeenCalled();
+  });
+  it('limpa sem alterar o conteúdo', () => { expect(cleanKey(` 'AB CD' `)).toBe('ABCD'); });
 });
