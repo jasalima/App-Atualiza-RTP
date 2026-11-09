@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { requireProject } from './authorize';
 import { sql } from './db';
 import { loadTravel, loadTravelReport, travelFile } from './travel';
-import { fullTravelFill, signatureManifest } from './signatures';
+import { APP_URL, fullTravelFill, signatureManifest, signLink } from './signatures';
 import { readPrivateObject } from './storage';
 import { toDocx, toPdf } from '../server/services/export';
 import type { ReportContent } from '../server/types';
@@ -30,9 +30,24 @@ export async function sender(session: Session, projectId: string) {
   };
 }
 /** WhatsApp text that goes with a travel accountability report. */
-export async function accountabilityMessage(session: Session, projectId: string, label: string) {
+// links: the electronic signature still pending for this report, and the report in the app,
+// where the beneficiary can correct or complete it (photos, receipts) before signing.
+export async function accountabilityMessage(session: Session, projectId: string, label: string, links: { sign?: string | null; edit?: string | null } = {}) {
   const from = await sender(session, projectId);
   const rule = '━━━━━━━━━━━━━━━';
+  const steps = links.sign
+    ? [
+      `✍️ 1. Revise e assine eletronicamente pelo link: ${links.sign}`,
+      ...(links.edit ? [`✏️ 2. Para alterar ou completar o relatório, acesse com sua conta: ${links.edit}`] : []),
+      `📸 ${links.edit ? 3 : 2}. Insira o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico"`,
+      '📎 O arquivo anexo é uma cópia para conferência; a assinatura vale pelo link.'
+    ]
+    : [
+      '✍️ 1. Assine o documento anexo',
+      '📤 2. Devolva-o em PDF',
+      '📸 3. Insira o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico"',
+      ...(links.edit ? [`✏️ Para alterar ou completar o relatório, acesse com sua conta: ${links.edit}`] : [])
+    ];
   return [
     '📝 *PRESTAÇÃO DE CONTAS* · RTP Inteligente',
     '',
@@ -42,9 +57,7 @@ export async function accountabilityMessage(session: Session, projectId: string,
     '',
     rule,
     '📋 *Etapas*',
-    '✍️ 1. Assine o documento anexo',
-    '📤 2. Devolva-o em PDF',
-    '📸 3. Insira o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico"',
+    ...steps,
     rule,
     '',
     'Atenciosamente,',
@@ -66,7 +79,9 @@ export async function loadDocumentSource(input: z.infer<typeof documentRequest>)
     if (filled) {
       const { beneficiary, report } = await loadTravelReport(input.projectId, input.sourceId);
       const label = `Formulário 26 — Relatório de Viagem${report.destination ? ` a ${report.destination}` : ''}`;
-      return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label), makeFile: async () => travelFile(beneficiary, format, await fullTravelFill(report)) };
+      const [pending] = await sql`SELECT id FROM signature_requests WHERE project_id=${input.projectId}::uuid AND source_kind='travel' AND source_id=${input.sourceId}::uuid AND status='pending' ORDER BY created_at DESC LIMIT 1`;
+      const links = { sign: pending ? signLink(String(pending.id)) : null, edit: `${APP_URL}/travel/${input.sourceId}` };
+      return { session, version: null, label, caption: () => accountabilityMessage(session, input.projectId, label, links), makeFile: async () => travelFile(beneficiary, format, await fullTravelFill(report)) };
     }
     const { beneficiary } = await loadTravel(input.projectId, input.sourceId);
     const label = 'Formulário 26 — Relatório de Viagem';

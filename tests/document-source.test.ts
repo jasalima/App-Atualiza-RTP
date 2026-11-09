@@ -6,7 +6,7 @@ vi.mock('../lib/db', () => ({ sql: mocks.query }));
 vi.mock('../lib/storage', () => ({ readPrivateObject: mocks.read }));
 vi.mock('../lib/travel', () => ({ loadTravel: mocks.travel, travelFile: mocks.travelFile, loadTravelReport: mocks.travelReport, travelFill: (r: {destination: string}) => ({ destination: r.destination }) }));
 vi.mock('../server/services/export', () => ({ toPdf: mocks.pdf, toDocx: mocks.docx }));
-vi.mock('../lib/signatures', () => ({ fullTravelFill: async (r: { destination: string }) => ({ destination: r.destination }), signatureManifest: async () => null }));
+vi.mock('../lib/signatures', () => ({ fullTravelFill: async (r: { destination: string }) => ({ destination: r.destination }), signatureManifest: async () => null, APP_URL: 'https://app.example', signLink: (id: string) => `https://app.example/assinar/${id}` }));
 import { loadDocumentSource, MAX_DOCUMENT_BYTES, recipientNumber, safeFileName } from '../lib/document-source';
 beforeEach(() => { Object.values(mocks).forEach(mock => mock.mockReset()); mocks.access.mockResolvedValue({ user: {id:'sender'},role:'coordinator',scholarId:null }); });
 const input = { projectId:'project-a',sourceId:'source-a',kind:'rtp' as const,format:'pdf' as const };
@@ -64,7 +64,7 @@ describe('application document authorization', () => {
   });
   it('writes the accountability message signed by the sender and their project function', async () => {
     mocks.access.mockResolvedValue({ user:{id:'sender',name:'Jaasiel',email:'j@example.com'},role:'admin',scholarId:null });
-    mocks.query.mockResolvedValueOnce([{'?column?':1}]).mockResolvedValueOnce([{full_name:'Jaasiel Nascimento Lima',role_area:'Assistente de Gestão do Projeto'}]);
+    mocks.query.mockResolvedValueOnce([{'?column?':1}]).mockResolvedValueOnce([]).mockResolvedValueOnce([{full_name:'Jaasiel Nascimento Lima',role_area:'Assistente de Gestão do Projeto'}]);
     mocks.travelReport.mockResolvedValue({beneficiary:{name:'Beneficiary'},report:{destination:'Lagoa da Confusão/TO'}});
     const source = await loadDocumentSource({...input,kind:'travel',format:'docx'});
     expect(await source.caption!()).toBe([
@@ -72,12 +72,26 @@ describe('application document authorization', () => {
       '📄 *Documento:* Formulário 26 — Relatório de Viagem a Lagoa da Confusão/TO', '', '━━━━━━━━━━━━━━━', '📋 *Etapas*',
       '✍️ 1. Assine o documento anexo', '📤 2. Devolva-o em PDF',
       '📸 3. Insira o relatório de fotos do evento ou demais documentos que comprovem seu deslocamento (recibo/nota fiscal/fatura de hotel, restaurantes etc.), conforme consta da seção "registro fotográfico"',
+      '✏️ Para alterar ou completar o relatório, acesse com sua conta: https://app.example/travel/source-a',
       '━━━━━━━━━━━━━━━', '', 'Atenciosamente,', '*Jaasiel Nascimento Lima*', 'Assistente de Gestão do Projeto'
     ].join('\n'));
     mocks.query.mockResolvedValueOnce([]); mocks.travel.mockResolvedValue({beneficiary:{name:'Beneficiary'}});
     const fallback = await loadDocumentSource({...input,kind:'travel',format:'docx'});
     mocks.query.mockResolvedValueOnce([]);
     expect(await fallback.caption!()).toMatch(/\*Jaasiel\*\nAdministração do sistema$/);
+  });
+});
+describe('accountability message with a pending signature', () => {
+  it('carries the electronic signature link and the link to edit the report', async () => {
+    mocks.access.mockResolvedValue({ user:{id:'sender',name:'Jaasiel',email:'j@example.com'},role:'admin',scholarId:null });
+    mocks.query.mockResolvedValueOnce([{'?column?':1}]).mockResolvedValueOnce([{id:'req-1'}]).mockResolvedValueOnce([{full_name:'Jaasiel Nascimento Lima',role_area:'Assistente'}]);
+    mocks.travelReport.mockResolvedValue({beneficiary:{name:'Beneficiary'},report:{destination:'Lagoa da Confusão/TO'}});
+    const text = await (await loadDocumentSource({...input,kind:'travel',format:'docx'})).caption!();
+    expect(text).toContain('✍️ 1. Revise e assine eletronicamente pelo link: https://app.example/assinar/req-1');
+    expect(text).toContain('✏️ 2. Para alterar ou completar o relatório, acesse com sua conta: https://app.example/travel/source-a');
+    expect(text).toContain('📸 3. Insira o relatório de fotos');
+    expect(text).not.toContain('Devolva-o em PDF');
+    expect(String(mocks.query.mock.calls[1][0].join('?'))).toContain("status='pending'");
   });
 });
 describe('private stored documents', () => {
