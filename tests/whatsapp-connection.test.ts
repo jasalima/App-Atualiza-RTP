@@ -1,16 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ access: vi.fn(), own: vi.fn(), provision: vi.fn(), batch: vi.fn(), state: vi.fn(), connect: vi.fn(), config:vi.fn(),save:vi.fn() }));
+const mocks = vi.hoisted(() => ({ access: vi.fn(), own: vi.fn(), provision: vi.fn(), batch: vi.fn(), state: vi.fn(), connect: vi.fn(), config:vi.fn(),save:vi.fn(), probe: vi.fn(), logout: vi.fn(), sql: vi.fn() }));
+vi.mock('../lib/db', () => ({ sql: (...a: unknown[]) => { mocks.sql(...a); return Promise.resolve([]); } }));
 vi.mock('../lib/authorize', () => ({ requireProject: mocks.access }));
 vi.mock('../lib/modules', () => ({ requireModule: mocks.access }));
 vi.mock('../lib/travel', () => ({ sameOrigin: () => {}, travelError: (error: { status?: number; message?: string }) => Response.json({ error: error.message }, { status: error.status || 500 }) }));
 vi.mock('../lib/whatsapp-connections', () => ({ ownWhatsApp: mocks.own, provisionWhatsApp: mocks.provision, provisionProjectWhatsApp: mocks.batch }));
-vi.mock('../lib/connectivity-config', () => ({ connectivityConfig:mocks.config, saveConnectivity:mocks.save, evolutionForProject: async () => ({ state: mocks.state, connect: mocks.connect }) }));
+vi.mock('../lib/connectivity-config', () => ({ connectivityConfig:mocks.config, saveConnectivity:mocks.save, evolutionForProject: async () => ({ state: mocks.state, connect: mocks.connect, probe: mocks.probe, logout: mocks.logout }) }));
 vi.mock('../server/services/evolution', () => ({ Evolution: class { state = mocks.state; connect = mocks.connect; } }));
 import { GET, POST, PUT } from '../app/api/connectivity/route';
 const projectId = '10ab6e37-f57e-41e0-8218-6f69d51c33c4';
 const request = (action: string) => new Request('https://app.example/api/travel/connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, action, userId: 'foreign-user', instance: 'foreign-app' }) });
 beforeEach(() => { Object.values(mocks).forEach(fn => fn.mockReset()); mocks.access.mockResolvedValue({ user: { id: 'current-user' },role:'coordinator' }); mocks.config.mockResolvedValue({url:'https://evolution.example',key:'private-master',source:'project'}); });
 describe('WhatsApp connection authorization', () => {
+  it('reports a session the phone unlinked as interrupted, not connected', async () => {
+    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValue('open'); mocks.probe.mockResolvedValue(false);
+    const body = await (await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`))).json();
+    expect(body).toMatchObject({ state: 'stale', configured: false });
+    mocks.probe.mockResolvedValue(true);
+    expect(await (await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`))).json()).toMatchObject({ state: 'open', configured: true });
+  });
+  it('reconnecting a stale session logs it out and returns a new QR Code', async () => {
+    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValueOnce('open').mockResolvedValue('close'); mocks.probe.mockResolvedValue(false); mocks.connect.mockResolvedValue({ qr: 'data:image/png;base64,AA', connected: false });
+    expect(await (await POST(request('connect'))).json()).toEqual({ qr: 'data:image/png;base64,AA', connected: false });
+    expect(mocks.logout).toHaveBeenCalledWith('inst', 'tok');
+  });
+  it('disconnects only the own connection of the caller', async () => {
+    mocks.own.mockResolvedValue({ instance: 'inst', token: 'tok' }); mocks.state.mockResolvedValue('close');
+    expect(await (await POST(request('disconnect'))).json()).toEqual({ disconnected: true });
+    expect(mocks.own).toHaveBeenCalledWith(projectId, 'current-user');
+    expect(mocks.logout).toHaveBeenCalledWith('inst', 'tok');
+  });
   it('distinguishes confirmed missing configuration from an unreadable instance key',async()=>{
     mocks.config.mockResolvedValueOnce({url:'',key:'',source:'environment'});
     const first=await GET(new Request(`https://app.example/api/connectivity?projectId=${projectId}`));

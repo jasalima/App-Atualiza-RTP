@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link2, QrCode, RefreshCw, Settings, Users } from 'lucide-react';
+import { Link2, QrCode, RefreshCw, Settings, Unlink, Users } from 'lucide-react';
 import { route } from '../api';
 import type { ConnectivityStatus, DeliveryHistory } from '../connectivity';
 import { Empty, Notice, PageHead, Skeleton, Tag, errorText, useAsync, useScope, useToast } from '../ui';
@@ -46,6 +46,16 @@ function ConnectivityProject({ projectId, canManage, signer = false }: { project
     } catch (error) { if (alive.current) toast(errorText(error), 'crit'); }
     finally { if (alive.current) setBusy(''); }
   }
+  async function disconnect() {
+    if (!window.confirm('Desconectar seu WhatsApp deste projeto? Os envios pela sua conta param até você conectar de novo pelo QR Code.')) return;
+    setBusy('disconnect'); setQr(null); setExpired(false);
+    try {
+      await route('/connectivity', { method: 'POST', body: JSON.stringify({ projectId, action: 'disconnect' }) });
+      if (!alive.current) return;
+      await status.reload(); toast('WhatsApp desconectado. Para voltar a enviar, gere um novo QR Code.');
+    } catch (error) { if (alive.current) toast(errorText(error), 'crit'); }
+    finally { if (alive.current) setBusy(''); }
+  }
   async function prepareProject() {
     setBusy('project');
     try {
@@ -74,16 +84,17 @@ function ConnectivityProject({ projectId, canManage, signer = false }: { project
       <section className="panel panel-pad">
         <div className="connectivity-heading"><div className={`connectivity-symbol ${connected ? 'connected' : ''}`}><Link2 /></div><div><h2>Meu WhatsApp</h2><p className="muted">Uma conexão exclusiva para sua conta neste projeto.</p></div></div>
         {status.error ? <Notice tone="crit" title="Não foi possível consultar sua conexão">{status.error}<p>Use Atualizar estado para tentar novamente.</p></Notice> : !data ? <Skeleton /> : <>
-          <Tag tone={connected ? 'ok' : data.state === 'unavailable' ? 'warn' : 'info'}>{connected ? 'Conectado' : data.state === 'connecting' ? 'Aguardando leitura do QR Code' : data.state === 'unavailable' ? 'Conexão não confirmada' : 'Aguardando conexão'}</Tag>
+          <Tag tone={connected ? 'ok' : data.state === 'unavailable' || data.state === 'stale' ? 'warn' : 'info'}>{connected ? 'Conectado' : data.state === 'stale' ? 'Sessão interrompida' : data.state === 'connecting' ? 'Aguardando leitura do QR Code' : data.state === 'unavailable' ? 'Conexão não confirmada' : 'Aguardando conexão'}</Tag>
           {data.stateError && <div style={{marginTop:16}}><Notice tone="warn">{data.stateError}</Notice></div>}
           {data.code === 'CONFIG_MISSING' && canManage && <p>Configure o servidor no painel ao lado para habilitar o pareamento neste ambiente.</p>}
           {data.instance && <p className="muted connectivity-instance">{data.instance}</p>}
           {!connected && <>
             <p>No celular, abra <b>WhatsApp → Aparelhos conectados → Conectar um aparelho</b> e escaneie o código abaixo.</p>
             {qr ? <div className="connectivity-qr"><img src={qr} width={280} height={280} alt="QR Code para conectar o WhatsApp da sua conta ao projeto atual" /><small>Este código é temporário. Gere outro se expirar.</small></div> : <div className="connectivity-qr-placeholder"><QrCode /><span>{expired ? 'O código expirou. Gere um novo QR Code.' : 'Gere o QR Code para conectar seu aparelho.'}</span></div>}
-            <button className="btn btn-primary" disabled={!!busy || !data.provisionAvailable} onClick={() => void connect()}><QrCode />{busy === 'connect' ? 'Preparando conexão…' : qr || expired ? 'Gerar novo QR Code' : data.code === 'INSTANCE_KEY_UNREADABLE' || data.code === 'INSTANCE_AUTH_FAILED' ? 'Reconectar meu WhatsApp' : 'Conectar meu WhatsApp'}</button>
+            <button className="btn btn-primary" disabled={!!busy || !data.provisionAvailable} onClick={() => void connect()}><QrCode />{busy === 'connect' ? 'Preparando conexão…' : qr || expired ? 'Gerar novo QR Code' : data.state === 'stale' || data.code === 'INSTANCE_KEY_UNREADABLE' || data.code === 'INSTANCE_AUTH_FAILED' ? 'Reconectar meu WhatsApp' : 'Conectar meu WhatsApp'}</button>
           </>}
           {connected && <Notice tone="ok">Conexão pronta. Use o ícone Enviar documento nas telas de relatórios e arquivos.</Notice>}
+          {data.instance && (connected || data.state === 'stale' || data.state === 'connecting') && <button className="btn" style={{marginTop:12}} disabled={!!busy} onClick={() => void disconnect()}><Unlink />{busy === 'disconnect' ? 'Desconectando…' : 'Desconectar meu WhatsApp'}</button>}
         </>}
       </section>
       <section className="panel panel-pad">
@@ -102,7 +113,7 @@ function ConnectivityProject({ projectId, canManage, signer = false }: { project
       </section>
     </div>
     <section className="panel" style={{marginTop:24}}><div className="panel-head"><div><h2>Meus envios recentes</h2><p>Solicitações feitas pela sua conta neste projeto. Aceitação pelo servidor não confirma a entrega ao celular.</p></div></div>
-      {history.error ? <div className="panel-pad"><Notice tone="warn">{history.error}</Notice></div> : !history.data ? <Skeleton /> : !history.data.length ? <Empty title="Nenhum envio registrado">Os documentos enviados por você aparecerão aqui.</Empty> : <div className="table-wrap"><table className="ledger"><thead><tr><th>Documento</th><th>Destinatário</th><th>Situação</th><th>Data</th></tr></thead><tbody>{history.data.map(row => <tr key={row.id}><td>{row.file_name}{row.source_version && <small>Versão {row.source_version}</small>}</td><td>{row.recipient}</td><td><Tag tone={row.status === 'accepted' ? 'ok' : row.status === 'sending' ? 'info' : 'warn'}>{row.status === 'accepted' ? 'Aceito pelo servidor' : row.status === 'sending' ? 'Enviando' : 'Conferir no WhatsApp'}</Tag></td><td>{new Intl.DateTimeFormat('pt-BR', {dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'}).format(new Date(row.created_at))}</td></tr>)}</tbody></table></div>}
+      {history.error ? <div className="panel-pad"><Notice tone="warn">{history.error}</Notice></div> : !history.data ? <Skeleton /> : !history.data.length ? <Empty title="Nenhum envio registrado">Os documentos enviados por você aparecerão aqui.</Empty> : <div className="table-wrap"><table className="ledger"><thead><tr><th>Documento</th><th>Destinatário</th><th>Situação</th><th>Data</th></tr></thead><tbody>{history.data.map(row => <tr key={row.id}><td>{row.file_name}{row.source_version && <small>Versão {row.source_version}</small>}</td><td>{row.recipient}</td><td><Tag tone={row.status === 'accepted' ? 'ok' : row.status === 'sending' ? 'info' : row.status === 'failed' ? 'crit' : 'warn'}>{row.status === 'accepted' ? 'Aceito pelo servidor' : row.status === 'sending' ? 'Enviando' : row.status === 'failed' ? 'Não enviado' : 'Conferir no WhatsApp'}</Tag></td><td>{new Intl.DateTimeFormat('pt-BR', {dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'}).format(new Date(row.created_at))}</td></tr>)}</tbody></table></div>}
     </section>
   </>;
 }

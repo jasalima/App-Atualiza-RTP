@@ -38,7 +38,7 @@ const NOT_ON_WHATSAPP = /NUMBER_NOT_ON_WHATSAPP|not.*(exist|registered|on whatsa
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Evolution {
   constructor(private base = process.env.EVOLUTION_API_URL || '', private masterKey = process.env.EVOLUTION_API_KEY || '', private fetcher: typeof fetch = fetch, private wait: (ms: number) => Promise<unknown> = pause) {}
-  private async call(path: string, key: string, body?: unknown, method?: 'PUT' | 'POST') {
+  private async call(path: string, key: string, body?: unknown, method?: 'PUT' | 'POST' | 'DELETE') {
     if (!key) throw new EvolutionError('Configure as credenciais da Evolution API no servidor.', 503);
     let endpoint: URL;
     try { endpoint = new URL(`${this.base.replace(/\/$/, '')}${path}`); } catch { throw new EvolutionError('Configure a URL da Evolution API no servidor.', 503); }
@@ -73,6 +73,36 @@ export class Evolution {
   }
   async sendText(instance: string, token: string, number: string, text: string) {
     return this.deliver(instance, token, number, (to) => this.call(`/message/sendText/${encodeURIComponent(instance)}`, token, { number: to, text }));
+  }
+  /**
+   * Does the session really answer? The reported state stays "open" when the device was unlinked
+   * on the phone or the socket died; a lookup through the socket tells the truth.
+   * true: it answered; false: the session is dead; null: could not tell.
+   */
+  async probe(instance: string, token: string): Promise<boolean | null> {
+    try { await this.call(`/chat/whatsappNumbers/${encodeURIComponent(instance)}`, token, { numbers: ['5500000000000'] }); return true; }
+    catch (error) {
+      if (!(error instanceof EvolutionError) || error.providerStatus === undefined) return null;
+      return TRANSIENT.test(error.detail ?? '') || /logged ?out|not connected|closed/i.test(error.detail ?? '') ? false : null;
+    }
+  }
+  /** Ends the WhatsApp session of this instance (the instance and its key remain, ready for a new QR Code). */
+  async logout(instance: string, token: string) {
+    const path = `/instance/logout/${encodeURIComponent(instance)}`;
+    for (const key of [token, this.masterKey].filter(Boolean)) {
+      try { await this.call(path, key, undefined, 'DELETE'); return; }
+      catch (error) {
+        const p = error instanceof EvolutionError ? error.providerStatus : undefined;
+        if (p === 401 || p === 403) continue;
+        if (error instanceof EvolutionError && /não confirmou/.test(error.message)) return; // accepted, empty body
+        if (p === 404 && !/connection/i.test(error instanceof EvolutionError ? error.detail ?? '' : '')) return; // nothing to end
+        // A dead socket cannot log out (Connection Closed): restarting it makes the server
+        // notice the unlinked device and drop the stale session.
+        if (await this.restart(instance, token)) return;
+        throw error;
+      }
+    }
+    throw new EvolutionError('O servidor WhatsApp não aceitou a desconexão. Tente novamente.', 502);
   }
   /** Restarts the instance's WhatsApp session with its saved credentials (v2: POST, v1: PUT). */
   async restart(instance: string, token: string) {

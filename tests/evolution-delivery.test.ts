@@ -79,3 +79,22 @@ describe('Resilient delivery', () => {
     await expect(evo.sendText('inst', 'tok', '5563984028033', 'oi')).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Reconectar') });
   });
 });
+
+describe('Stale sessions', () => {
+  it('probe tells a dead session from a live one', async () => {
+    expect(await make(Response.json([{ exists: false }])).evo.probe('inst', 'tok')).toBe(true);
+    expect(await make(bad({ response: { message: ['Error: Connection Closed'] } })).evo.probe('inst', 'tok')).toBe(false);
+    expect(await make(Response.json({ error: 'x' }, { status: 500 })).evo.probe('inst', 'tok')).toBe(null);
+  });
+  it('logs out with DELETE', async () => {
+    const { fetcher, evo } = make(Response.json({ status: 'SUCCESS', error: false }));
+    await evo.logout('inst', 'tok');
+    expect(paths(fetcher)).toEqual(['/instance/logout/inst']);
+    expect(fetcher.mock.calls[0][1]!.method).toBe('DELETE');
+  });
+  it('restarts a dead socket that cannot log out', async () => {
+    const { fetcher, evo } = make(bad({ response: { message: ['Connection Closed'] } }), Response.json({ instance: { state: 'close' } }));
+    await evo.logout('inst', 'tok');
+    expect(paths(fetcher)).toEqual(['/instance/logout/inst', '/instance/restart/inst']);
+  });
+});
