@@ -4,6 +4,7 @@ import { documentRequest, loadDocumentSource, MAX_DOCUMENT_BYTES, recipientNumbe
 import { sameOrigin, travelError } from '../../../../lib/travel';
 import { ownWhatsApp } from '../../../../lib/whatsapp-connections';
 import { evolutionForProject } from '../../../../lib/connectivity-config';
+import { EvolutionError } from '../../../../server/services/evolution';
 export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
@@ -33,7 +34,13 @@ export async function POST(request: Request) {
         ...(input.kind === 'rtp' ? [sql`UPDATE reports SET status='exported' WHERE id=${input.sourceId}::uuid AND project_id=${input.projectId}::uuid AND status='approved' AND current_version=${source.version}`] : [])
       ]);
       return Response.json({ success: true, deliveryId: claimed[0].id, status: 'accepted' }, { headers: { 'Cache-Control': 'private, no-store' } });
-    } catch {
+    } catch (error) {
+      // The provider answered with a refusal: nothing went out, so say why and allow a new attempt.
+      if (error instanceof EvolutionError && error.providerStatus !== undefined) {
+        await sql`UPDATE document_deliveries SET status='failed',updated_at=now() WHERE id=${claimed[0].id}::uuid`;
+        await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${input.projectId}::uuid,'send_document_failed','document_delivery',${String(claimed[0].id)},${JSON.stringify({ providerStatus: error.providerStatus, detail: error.detail ?? null })}::jsonb)`.catch(() => {});
+        return Response.json({ error: error.message }, { status: error.status });
+      }
       await sql`UPDATE document_deliveries SET status='uncertain',updated_at=now() WHERE id=${claimed[0].id}::uuid`;
       return Response.json({ error: 'Não foi possível confirmar o envio. Confira o WhatsApp antes de tentar novamente.' }, { status: 502 });
     }
