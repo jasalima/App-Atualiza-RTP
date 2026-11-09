@@ -4,9 +4,14 @@ import { Evolution, EvolutionError, gesprojectInstance } from '../server/service
 import { openCredential, sealCredential } from '../server/services/travel-credentials';
 import { ConnectivityError, evolutionForProject } from './connectivity-config';
 
+/** This account's instance names in a project: the original one, or a replacement (-r + 6 hex). */
+export function ownsInstance(projectId: string, userId: string, name: string) {
+  const base = gesprojectInstance(projectId, userId);
+  return name === base || (name.startsWith(`${base}-r`) && /^[0-9a-f]{6}$/.test(name.slice(base.length + 2)));
+}
 export async function ownWhatsApp(projectId: string, userId: string) {
   const [row] = await sql`SELECT instance,api_key FROM project_whatsapp_connections WHERE project_id=${projectId}::uuid AND auth_user_id=${userId}`;
-  if (!row || row.instance !== gesprojectInstance(projectId, userId)) return null;
+  if (!row || !ownsInstance(projectId, userId, String(row.instance))) return null;
   try { return { instance: String(row.instance), token: openCredential(String(row.api_key), `${userId}:${projectId}`) }; }
   catch { throw new ConnectivityError('A chave individual precisa ser sincronizada neste ambiente. Use Reconectar em Conectividade.', 'INSTANCE_KEY_UNREADABLE'); }
 }
@@ -18,7 +23,10 @@ export async function provisionWhatsApp(projectId: string, userId: string) {
   // reuse the winner's key, including after an uncertain create response.
   await sql`INSERT INTO project_whatsapp_connections(project_id,auth_user_id,instance,api_key) VALUES(${projectId}::uuid,${userId},${instance},${encrypted})
     ON CONFLICT(project_id,auth_user_id) DO UPDATE SET instance=EXCLUDED.instance,api_key=EXCLUDED.api_key,updated_at=now()
-    WHERE project_whatsapp_connections.instance<>EXCLUDED.instance`;
+    WHERE project_whatsapp_connections.instance<>EXCLUDED.instance AND project_whatsapp_connections.instance NOT LIKE ${`${instance}-r%`}`;
+  // A replacement connection (see replaceWhatsApp) is kept; recover under the name actually saved.
+  const [saved] = await sql`SELECT instance FROM project_whatsapp_connections WHERE project_id=${projectId}::uuid AND auth_user_id=${userId}`;
+  const current = saved && ownsInstance(projectId, userId, String(saved.instance)) ? String(saved.instance) : instance;
   let connection;
   try { connection = await ownWhatsApp(projectId, userId); }
   catch (error) {
@@ -26,9 +34,9 @@ export async function provisionWhatsApp(projectId: string, userId: string) {
     // Only recover the exact binding already reserved in this application's DB.
     // The provider's administrative key authorizes reading that instance token;
     // no instance is adopted by name supplied from a browser or reconfigured.
-    const token = await provider.recoverScopedToken(instance);
+    const token = await provider.recoverScopedToken(current);
     const repaired = sealCredential(token, `${userId}:${projectId}`);
-    await sql`UPDATE project_whatsapp_connections SET api_key=${repaired},updated_at=now() WHERE project_id=${projectId}::uuid AND auth_user_id=${userId} AND instance=${instance}`;
+    await sql`UPDATE project_whatsapp_connections SET api_key=${repaired},updated_at=now() WHERE project_id=${projectId}::uuid AND auth_user_id=${userId} AND instance=${current}`;
     connection = await ownWhatsApp(projectId, userId);
   }
   if (!connection) throw new Error('Não foi possível reservar a conexão individual.');
@@ -78,4 +86,21 @@ export async function sessionBroken(projectId: string, userId: string) {
       AND action IN ('notify_signer','notify_returned','send_signed','send_document','notify_failed','send_document_failed','dispatch_skipped','whatsapp_disconnect','whatsapp_connected')
     ORDER BY created_at DESC LIMIT 1`;
   return !!row && /connection closed|logged ?out/i.test(String(row.meta ?? '')) && ['notify_failed', 'send_document_failed', 'dispatch_skipped'].includes(String(row.action));
+}
+
+/**
+ * A session Evolution can neither log out nor delete (dead socket still reported as open) cannot
+ * be reused. This account gets a fresh instance under a new name and key; the stuck one is left
+ * for the server administrator. Only the caller's own binding changes; nothing else is touched.
+ */
+export async function replaceWhatsApp(projectId: string, userId: string) {
+  const provider = await evolutionForProject(projectId);
+  const old = await ownWhatsApp(projectId, userId).catch(() => null);
+  if (old) await provider.deleteInstance(old.instance).catch(() => {});
+  const instance = `${gesprojectInstance(projectId, userId)}-r${randomBytes(3).toString('hex')}`;
+  const token = randomBytes(32).toString('hex');
+  await sql`INSERT INTO project_whatsapp_connections(project_id,auth_user_id,instance,api_key) VALUES(${projectId}::uuid,${userId},${instance},${sealCredential(token, `${userId}:${projectId}`)})
+    ON CONFLICT(project_id,auth_user_id) DO UPDATE SET instance=EXCLUDED.instance,api_key=EXCLUDED.api_key,updated_at=now()`;
+  await provider.ensure(instance, token);
+  return { instance, token, previous: old?.instance ?? null };
 }

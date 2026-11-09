@@ -107,6 +107,10 @@ export class Evolution {
     }
     throw new EvolutionError('O servidor WhatsApp não conseguiu encerrar esta sessão. No celular, abra WhatsApp → Aparelhos conectados e remova o aparelho; depois clique em Atualizar estado.', 502);
   }
+  /** Removes an instance from the server (administrative key). */
+  async deleteInstance(instance: string) {
+    await this.call(`/instance/delete/${encodeURIComponent(instance)}`, this.masterKey, undefined, 'DELETE');
+  }
   private async settled(check: () => Promise<boolean>) {
     for (let i = 0; i < 4; i++) { if (await check()) return true; await this.wait(1500); }
     return check();

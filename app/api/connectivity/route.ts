@@ -4,7 +4,7 @@ import { requireProject } from '../../../lib/authorize';
 import { requireModule } from '../../../lib/modules';
 import { sameOrigin, travelError } from '../../../lib/travel';
 import { connectivityConfig, evolutionForProject, saveConnectivity } from '../../../lib/connectivity-config';
-import { ownWhatsApp, provisionProjectWhatsApp, provisionWhatsApp, sessionBroken } from '../../../lib/whatsapp-connections';
+import { ownWhatsApp, provisionProjectWhatsApp, provisionWhatsApp, replaceWhatsApp, sessionBroken } from '../../../lib/whatsapp-connections';
 const projectSchema = z.string().uuid();
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -56,13 +56,19 @@ export async function PUT(request: Request) {
 export async function POST(request: Request) {
   try {
     sameOrigin(request);
-    const body = z.object({ projectId: projectSchema, action: z.enum(['provision', 'provisionProject', 'connect', 'disconnect']) }).parse(await request.json());
+    const body = z.object({ projectId: projectSchema, action: z.enum(['provision', 'provisionProject', 'connect', 'disconnect', 'replace']) }).parse(await request.json());
     const { user } = body.action === 'provisionProject' ? await requireProject(body.projectId, true) : await requireModule(body.projectId, 'whatsapp');
     if (body.action === 'provisionProject') {
       const results = await provisionProjectWhatsApp(body.projectId);
       return Response.json({ total: results.length, prepared: results.filter(r => !r.error).length, failed: results.filter(r => r.error).length }, { headers });
     }
     if (body.action === 'provision') return Response.json(await provisionWhatsApp(body.projectId, user.id), { headers });
+    if (body.action === 'replace') {
+      const provider = await evolutionForProject(body.projectId);
+      const fresh = await replaceWhatsApp(body.projectId, user.id);
+      await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${user.id},${body.projectId}::uuid,'whatsapp_connected','whatsapp_connection',${fresh.instance},${JSON.stringify({ replaced: fresh.previous })}::jsonb)`.catch(() => {});
+      return Response.json(await provider.connect(fresh.instance, fresh.token), { headers });
+    }
     const connection = await ownWhatsApp(body.projectId, user.id);
     if (!connection) return Response.json({ error: 'Crie sua conexão individual primeiro.' }, { status: 409, headers });
     const provider = await evolutionForProject(body.projectId);

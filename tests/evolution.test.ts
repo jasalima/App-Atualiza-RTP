@@ -64,7 +64,7 @@ describe('stored instance isolation', () => {
   it('uses the persisted winner key when retrying provisioning instead of rotating it', async () => {
     vi.stubEnv('WHATSAPP_CREDENTIAL_SECRET', 'test-secret-longer-than-32-characters');
     const name = gesprojectInstance('p', 'u');
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ instance: name, api_key: sealCredential('persisted-winner', 'u:p') }]);
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ instance: name }]).mockResolvedValueOnce([{ instance: name, api_key: sealCredential('persisted-winner', 'u:p') }]);
     const ensure = vi.spyOn(Evolution.prototype, 'ensure').mockResolvedValue({ created: false });
     expect(await provisionWhatsApp('p', 'u')).toEqual({ instance: name, created: false });
     expect(ensure).toHaveBeenCalledWith(name, 'persisted-winner');

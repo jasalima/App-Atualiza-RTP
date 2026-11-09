@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link2, QrCode, RefreshCw, Settings, Unlink, Users } from 'lucide-react';
+import { Link2, QrCode, RefreshCw, RotateCcw, Settings, Unlink, Users } from 'lucide-react';
 import { route } from '../api';
 import type { ConnectivityStatus, DeliveryHistory } from '../connectivity';
 import { Empty, Notice, PageHead, Skeleton, Tag, errorText, useAsync, useScope, useToast } from '../ui';
@@ -56,6 +56,17 @@ function ConnectivityProject({ projectId, canManage, signer = false }: { project
     } catch (error) { if (alive.current) toast(errorText(error), 'crit'); }
     finally { if (alive.current) setBusy(''); }
   }
+  async function replace() {
+    if (!window.confirm('Criar uma nova conexão para o seu WhatsApp? Use quando a conexão atual travou e não desconecta. A conexão antiga deixa de ser usada pelo app e você escaneia um novo QR Code. As conexões dos outros usuários não mudam.')) return;
+    setBusy('replace'); setQr(null); setExpired(false);
+    try {
+      const result = await route<{ connected: boolean; qr: string | null }>('/connectivity', { method: 'POST', body: JSON.stringify({ projectId, action: 'replace' }) });
+      if (!alive.current) return;
+      setQr(result.qr); await status.reload();
+      toast(result.qr ? 'Nova conexão criada. Escaneie o QR Code pelo celular.' : 'Nova conexão criada. Clique em Gerar novo QR Code.');
+    } catch (error) { if (alive.current) toast(errorText(error), 'crit'); }
+    finally { if (alive.current) setBusy(''); }
+  }
   async function prepareProject() {
     setBusy('project');
     try {
@@ -95,6 +106,7 @@ function ConnectivityProject({ projectId, canManage, signer = false }: { project
           </>}
           {connected && <Notice tone="ok">Conexão pronta. Use o ícone Enviar documento nas telas de relatórios e arquivos.</Notice>}
           {data.instance && (connected || data.state === 'stale' || data.state === 'connecting') && <button className="btn" style={{marginTop:12}} disabled={!!busy} onClick={() => void disconnect()}><Unlink />{busy === 'disconnect' ? 'Desconectando…' : 'Desconectar meu WhatsApp'}</button>}
+          {data.instance && data.provisionAvailable && <div style={{marginTop:12}}><button className="btn" disabled={!!busy} onClick={() => void replace()}><RotateCcw />{busy === 'replace' ? 'Criando nova conexão…' : 'Criar nova conexão'}</button><small className="muted" style={{display:'block',marginTop:6}}>Use se a conexão travou e não desconecta: o app passa a usar uma conexão nova, com novo QR Code.</small></div>}
         </>}
       </section>
       <section className="panel panel-pad">
