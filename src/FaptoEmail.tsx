@@ -59,6 +59,7 @@ export function FaptoSendDrawer({ projectId, reportIds, onClose, onSent, onConfi
     {error ? <Notice tone="crit">{error}</Notice> : !data ? <Skeleton /> : <div className="grid-form">
       {!data.ready && <div className="span-2"><Notice tone="warn">{NOT_READY}</Notice></div>}
       {!data.to.length && <div className="span-2"><Notice tone="warn" title="Falta o destinatário">Informe o e-mail da colaboradora da FAPTO no modelo de e-mail. <button className="btn btn-quiet" onClick={onConfigure}>Configurar</button></Notice></div>}
+      {!!data.missingOs?.length && <div className="span-2"><Notice tone="warn" title="Sem Nº OS FAPTO">{data.missingOs.join(', ')}: informe o Nº OS no relatório para a FAPTO localizar a diária. Dá para enviar assim mesmo.</Notice></div>}
       {data.lastSentAt && <div className="span-2"><Notice>Já enviado à FAPTO em {fmt(data.lastSentAt)}.</Notice></div>}
       <dl className="facts span-2">
         <div><dt>Para</dt><dd>{data.to.join(', ') || '—'}</dd></div>

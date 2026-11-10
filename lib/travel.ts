@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireProject } from './authorize';
 import { sql } from './db';
+import { isValidOs, normalizeOs, OS_HINT } from './fapto-os';
 import { DEFAULT_DESTINATION, DEFAULT_ORIGIN, travelDocx, travelPdf, type TravelBeneficiary, type TravelFill } from '../server/services/travel-export';
 
 export const travelQuery = z.object({ projectId: z.string().uuid(), scholarId: z.string().uuid(), format: z.enum(['pdf', 'docx']) });
@@ -17,6 +18,8 @@ export async function beneficiaryOf(projectId: string, scholarId: string) {
   const beneficiary: TravelBeneficiary = { name: flat(row.full_name), role: flat(row.role_area), phone: flat(row.phone), email: flat(row.email), project: flat(row.agreement) || flat(row.title) };
   return beneficiary;
 }
+/** Nº OS FAPTO: optional (older reports), but always in the WEB:99999/2026 format. */
+export const osNumberInput = z.string().max(40).transform(normalizeOs).refine((v) => v === '' || isValidOs(v), { message: `Nº OS FAPTO inválido. Use o ${OS_HINT}.` });
 export const travelEntry = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')), activity: z.string().max(2000) });
 export const travelReportUpdate = z.object({
   origin: z.string().trim().max(160).transform((v) => v || DEFAULT_ORIGIN), destination: z.string().trim().max(160).transform((v) => v || DEFAULT_DESTINATION),
@@ -30,7 +33,7 @@ const iso = (d: unknown) => d instanceof Date ? `${d.getFullYear()}-${String(d.g
 const stamp = (d: unknown) => d instanceof Date ? d.toISOString() : String(d ?? '');
 export const travelReportRow = (r: Record<string, unknown>) => ({
   id: String(r.id), projectId: String(r.project_id), scholarId: String(r.scholar_id), scholarName: r.full_name ? String(r.full_name) : undefined,
-  origin: String(r.origin ?? ''), destination: String(r.destination ?? ''), departureDate: iso(r.departure_date), returnDate: iso(r.return_date), paymentDate: iso(r.payment_date),
+  osNumber: String(r.os_number ?? ''), origin: String(r.origin ?? ''), destination: String(r.destination ?? ''), departureDate: iso(r.departure_date), returnDate: iso(r.return_date), paymentDate: iso(r.payment_date),
   objective: String(r.objective ?? ''), entries: (r.entries ?? []) as Array<{ date: string; activity: string }>, photos: (r.photos ?? []) as TravelPhoto[], status: String(r.status),
   // ISO strings: String(Date) is not parseable by Postgres and drops the milliseconds.
   createdAt: stamp(r.created_at), updatedAt: stamp(r.updated_at),

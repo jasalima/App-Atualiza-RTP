@@ -23,7 +23,7 @@ Atenciosamente,
 /** Placeholders accepted in the model, shown in the configuration screen. */
 export const PLACEHOLDERS = {
   projeto: 'Projeto/convênio', beneficiarios: 'Nome(s) do(s) beneficiário(s)', periodo: 'Período(s) da viagem', destino: 'Destino(s)',
-  quantidade: 'Quantidade de relatórios', relatorios: 'Lista dos relatórios com período, destino e link de verificação',
+  os: 'Nº OS FAPTO da(s) diária(s)', quantidade: 'Quantidade de relatórios', relatorios: 'Lista dos relatórios com destino, período, Nº OS FAPTO e link de verificação',
   remetente: 'Seu nome', funcao_remetente: 'Sua função no projeto', data_envio: 'Data do envio'
 } as const;
 
@@ -83,7 +83,8 @@ async function compose(input: z.infer<typeof sendInput>, user: { id: string; ema
     projeto: String(project?.agreement || '').trim() || String(project?.title ?? ''),
     beneficiarios: unique(reports.map((x) => x.beneficiary.name)), periodo: unique(reports.map((x) => period(x.report))),
     destino: unique(reports.map((x) => x.report.destination)), quantidade: String(reports.length),
-    relatorios: reports.map((x, i) => `${i + 1}. ${x.beneficiary.name} — ${x.report.destination || 'destino não informado'} — ${period(x.report)}\n   Verificação: ${verifyLink(String(x.request!.verification_code))}`).join('\n'),
+    os: unique(reports.map((x) => x.report.osNumber)),
+    relatorios: reports.map((x, i) => `${i + 1}. ${x.beneficiary.name} — ${x.report.destination || 'destino não informado'} — ${period(x.report)}${x.report.osNumber ? ` OS ${x.report.osNumber}` : ''}\n   Verificação: ${verifyLink(String(x.request!.verification_code))}`).join('\n'),
     remetente: String(me?.name || user.name || user.email || '').replace(/\s+/g, ' ').trim(), funcao_remetente: String(me?.roleLabel ?? '').replace(/\s+/g, ' ').trim(),
     data_envio: new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date())
   };
@@ -109,6 +110,7 @@ export async function sendTravelToFapto(input: z.infer<typeof sendInput>, user: 
   const previous = await sql`SELECT max(created_at) AS at FROM email_deliveries WHERE project_id=${input.projectId}::uuid AND status='sent' AND source_ids && ${reports.map((x) => x.report.id)}::uuid[]`;
   const lastSentAt = previous[0]?.at ? new Date(previous[0].at as string).toISOString() : null;
   if (input.preview) return { preview: true as const, to: settings.recipients, cc: settings.cc, from: settings.provider.from, ready: settings.provider.ready, subject, body: text, lastSentAt,
+    missingOs: reports.filter((x) => !x.report.osNumber).map((x) => x.beneficiary.name),
     files: reports.map((x) => travelFileName(x.beneficiary.name, 'pdf', { departure: x.report.departureDate, signatures: { status: 'completed' } as never })) };
 
   if (!settings.recipients.length) throw fail('Configure o e-mail da colaboradora da FAPTO em "Modelo de e-mail" antes de enviar.', 409);

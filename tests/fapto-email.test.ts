@@ -13,13 +13,14 @@ vi.mock('../lib/travel', () => ({
 }));
 import { render, sendTravelToFapto, toHtml } from '../lib/fapto-email';
 import { EmailError, sendEmail } from '../server/services/resend';
+import { isValidOs, normalizeOs } from '../lib/fapto-os';
 
 const user = { id: 'coord', email: 'coord@uft.edu.br', name: 'Jaasiel' };
 const input = (o: Record<string, unknown> = {}) => ({ projectId: '11111111-1111-4111-8111-111111111111', reportIds: ['22222222-2222-4222-8222-222222222222'], preview: false, ...o });
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 're_test'); vi.stubEnv('EMAIL_FROM', 'RTP <rtp@exemplo.org>');
-  m.report.mockResolvedValue({ id: '22222222-2222-4222-8222-222222222222', scholarId: 's', scholarName: 'Gilson', destination: 'Lagoa da Confusão/TO', departureDate: '2026-09-22', returnDate: '2026-09-22' });
+  m.report.mockResolvedValue({ id: '22222222-2222-4222-8222-222222222222', scholarId: 's', scholarName: 'Gilson', osNumber: 'WEB:99999/2026', destination: 'Lagoa da Confusão/TO', departureDate: '2026-09-22', returnDate: '2026-09-22' });
   m.read.mockResolvedValue(Buffer.from('%PDF archived'));
   m.rows.mockImplementation((q: string) => Promise.resolve(
     q.includes('FROM project_email_settings') ? [{ recipients: ['analista@fapto.org.br'], cc: [], subject_template: 'PCDP {{beneficiarios}}', body_template: 'Olá\n\n{{relatorios}}\n\n{{remetente}} — {{funcao_remetente}}' }]
@@ -53,7 +54,7 @@ describe('envio à FAPTO', () => {
     expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('fapto-travel/d-1');
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({ from: 'RTP <rtp@exemplo.org>', to: ['analista@fapto.org.br'], reply_to: 'coord@uft.edu.br', subject: 'PCDP Francisco Gilson Pôrto' });
-    expect(body.text).toContain('Verificação: https://app.example/verificar/ABCD-1234');
+    expect(body.text).toContain('1. Francisco Gilson Pôrto — Lagoa da Confusão/TO — 22/09/2026 OS WEB:99999/2026\n   Verificação: https://app.example/verificar/ABCD-1234');
     expect(body.text).toContain('Jaasiel Lima — Coordenação geral');
     expect(body.attachments).toEqual([{ filename: 'PCDP_Francisco_Gilson_Pôrto_22-09-2026_assinado.pdf', content: Buffer.from('%PDF archived').toString('base64') }]);
     expect(m.rows.mock.calls.some(([q]) => q.includes("SET status='sent'"))).toBe(true);
@@ -63,15 +64,27 @@ describe('envio à FAPTO', () => {
     await expect(sendTravelToFapto(input(), user)).rejects.toMatchObject({ status: 409 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
-  it('pré-visualiza sem enviar', async () => {
+  it('pré-visualiza sem enviar e avisa quem está sem Nº OS', async () => {
+    m.report.mockResolvedValue({ id: '22222222-2222-4222-8222-222222222222', scholarId: 's', scholarName: 'Gilson', osNumber: '', destination: 'Lagoa da Confusão/TO', departureDate: '2026-09-22', returnDate: '2026-09-22' });
     const p = await sendTravelToFapto(input({ preview: true }), user);
-    expect(p).toMatchObject({ preview: true, ready: true, subject: 'PCDP Francisco Gilson Pôrto' });
+    expect(p).toMatchObject({ preview: true, ready: true, subject: 'PCDP Francisco Gilson Pôrto', missingOs: ['Francisco Gilson Pôrto'] });
+    expect((p as { body: string }).body).toContain('— 22/09/2026\n');
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it('marca a entrega como falha quando o Resend recusa o remetente', async () => {
     fetchMock.mockResolvedValue(Response.json({ message: 'domain not verified' }, { status: 403 }));
     await expect(sendTravelToFapto(input(), user)).rejects.toBeInstanceOf(EmailError);
     expect(m.rows.mock.calls.some(([q]) => q.includes("SET status='failed'"))).toBe(true);
+  });
+});
+
+describe('Nº OS FAPTO', () => {
+  it('normaliza variações e valida o formato WEB:99999/2026', () => {
+    expect(normalizeOs(' web 99999 / 2026 ')).toBe('WEB:99999/2026');
+    expect(normalizeOs('99999/2026')).toBe('WEB:99999/2026');
+    expect(isValidOs(normalizeOs('WEB:99999/2026'))).toBe(true);
+    expect(isValidOs(normalizeOs('WEB:99999/26'))).toBe(false);
+    expect(isValidOs(normalizeOs('OS 123'))).toBe(false);
   });
 });
 

@@ -7,6 +7,7 @@ import SendDocumentButton from '../SendDocumentButton';
 import { PhotoManager, TravelFields } from '../TravelFields';
 import { SignaturePanel } from './Signatures';
 import { Notice, Skeleton, Tag, errorText, useScope, useToast } from '../ui';
+import { isValidOs, normalizeOs, OS_HINT } from '@/lib/fapto-os';
 
 export default function TravelReportEditor() {
   const { id } = useParams(), { project, canManage } = useScope(), toast = useToast();
@@ -14,7 +15,7 @@ export default function TravelReportEditor() {
   const [photos, setPhotos] = useState<TravelPhoto[]>([]), [signLocked, setSignLocked] = useState(false), onLock = useCallback((v: boolean) => setSignLocked(v), []);
   const photoEndpoint = `/travel/reports/${id}/photos?projectId=${project!.id}`;
   // Photos are saved one by one, apart from the form: keep them out of the dirty check.
-  const strip = (x: TravelReport) => JSON.stringify({ ...x, photos: undefined, updatedAt: undefined });
+  const strip = (x: TravelReport) => JSON.stringify({ ...x, photos: undefined, updatedAt: undefined, osNumber: undefined });
   useEffect(() => { travelReports.get(project!.id, id!).then((r) => { setReport(r); setSaved(strip(r)); }, (e) => setError(errorText(e))); }, [project, id]);
   useEffect(() => { photosApi.list(photoEndpoint).then((x) => setPhotos(x.photos), () => setPhotos([])); }, [photoEndpoint]);
   if (error) return <Notice tone="crit" title="Não foi possível abrir o relatório de viagem">{error}</Notice>;
@@ -63,6 +64,7 @@ export default function TravelReportEditor() {
       </div>
 
       <aside className="side">
+        <OsPanel projectId={project!.id} report={r} onSaved={(osNumber) => setReport((x) => x && { ...x, osNumber })} />
         <SignaturePanel kind="travel" sourceId={r.id} scholarId={r.scholarId} dirty={dirty} onLock={onLock} />
         <div className="panel">
           <h3>Documento</h3>
@@ -84,4 +86,24 @@ export default function TravelReportEditor() {
       </aside>
     </div>
   </>;
+}
+
+/** Nº OS FAPTO: saved on its own, outside the signed form, so it can be filled in even after signing. */
+function OsPanel({ projectId, report, onSaved }: { projectId: string; report: TravelReport; onSaved: (os: string) => void }) {
+  const toast = useToast(), current = report.osNumber ?? '';
+  const [value, setValue] = useState(current), [busy, setBusy] = useState(false);
+  useEffect(() => setValue(current), [current]);
+  const next = normalizeOs(value), ok = next === '' || isValidOs(next);
+  async function save() {
+    setBusy(true);
+    try { const r = await travelReports.setOs(projectId, report.id, next); setValue(r.osNumber ?? ''); onSaved(r.osNumber ?? ''); toast('Nº OS FAPTO salvo.'); }
+    catch (e) { toast(errorText(e), 'crit'); } finally { setBusy(false); }
+  }
+  return <div className="panel">
+    <h3>Nº OS FAPTO</h3>
+    <label className="field">Número da OS<input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => setValue(normalizeOs(value))} placeholder="WEB:99999/2026" autoComplete="off" aria-invalid={!ok} />
+      <small>{ok ? `${OS_HINT}. Vai no e-mail à FAPTO.` : `Confira o número. ${OS_HINT}.`}</small></label>
+    {next !== current && <button className="btn btn-block" style={{ marginTop: 8 }} disabled={busy || !ok} onClick={() => void save()}>{busy ? 'Salvando…' : 'Salvar Nº OS'}</button>}
+    {!current && next === current && <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>Ainda sem Nº OS: informe para a FAPTO localizar a diária.</p>}
+  </div>;
 }

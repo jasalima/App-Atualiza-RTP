@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { requireProject } from '@/lib/authorize';
 import { sql } from '@/lib/db';
-import { loadTravel, sameOrigin, travelError, travelReportRow } from '@/lib/travel';
+import { loadTravel, osNumberInput, sameOrigin, travelError, travelReportRow } from '@/lib/travel';
 export const runtime = 'nodejs';
 
 // Filled Formulário 26 reports of the project; scholars see only their own.
@@ -23,9 +23,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     sameOrigin(request);
-    const body = z.object({ projectId: z.string().uuid(), scholarId: z.string().uuid() }).parse(await request.json());
+    const parsed = z.object({ projectId: z.string().uuid(), scholarId: z.string().uuid(), osNumber: osNumberInput.default('') }).safeParse(await request.json());
+    if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || 'Confira os campos informados.' }, { status: 400 });
+    const body = parsed.data;
     const { session } = await loadTravel(body.projectId, body.scholarId);
-    const [row] = await sql`INSERT INTO travel_reports(project_id,scholar_id,created_by) VALUES(${body.projectId}::uuid,${body.scholarId}::uuid,${session.user.id})
+    const [row] = await sql`INSERT INTO travel_reports(project_id,scholar_id,os_number,created_by) VALUES(${body.projectId}::uuid,${body.scholarId}::uuid,${body.osNumber},${session.user.id})
       RETURNING *,(SELECT full_name FROM scholars WHERE id=${body.scholarId}::uuid) AS full_name`;
     await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id) VALUES(${session.user.id},${body.projectId}::uuid,'create','travel_report',${String(row.id)})`;
     return Response.json(travelReportRow(row), { status: 201 });

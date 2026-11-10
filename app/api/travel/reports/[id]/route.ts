@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { assertUnsigned, releaseForDeletion } from '@/lib/signatures';
 import { deletePrivateObjects } from '@/lib/storage';
-import { loadTravelReport, sameOrigin, travelError, travelReportRow, travelReportUpdate } from '@/lib/travel';
+import { loadTravelReport, osNumberInput, sameOrigin, travelError, travelReportRow, travelReportUpdate } from '@/lib/travel';
 export const runtime = 'nodejs';
 type Params = { params: Promise<{ id: string }> };
 const projectOf = (request: Request) => z.string().uuid().parse(new URL(request.url).searchParams.get('projectId'));
@@ -28,6 +28,21 @@ export async function PUT(request: Request, { params }: Params) {
       payment_date=${v.paymentDate}::date,objective=${v.objective},entries=${JSON.stringify(entries)}::jsonb,status=${v.status},updated_at=now()
       WHERE id=${id}::uuid AND project_id=${projectId}::uuid AND deleted_at IS NULL RETURNING *,(SELECT full_name FROM scholars WHERE id=scholar_id) AS full_name`;
     await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${projectId}::uuid,${v.status === 'finalized' ? 'finalize' : 'update'},'travel_report',${id},jsonb_build_object('status',${v.status}::text))`;
+    return Response.json(travelReportRow(row));
+  } catch (error) { return travelError(error); }
+}
+
+// Only the Nº OS FAPTO: it is not part of the signed form, so it can be set even after signing.
+export async function PATCH(request: Request, { params }: Params) {
+  try {
+    sameOrigin(request);
+    const { id } = await params, projectId = projectOf(request);
+    const parsed = z.object({ osNumber: osNumberInput }).safeParse(await request.json());
+    if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || 'Confira o Nº OS FAPTO.' }, { status: 400 });
+    const { session } = await loadTravelReport(projectId, id);
+    const [row] = await sql`UPDATE travel_reports SET os_number=${parsed.data.osNumber} WHERE id=${id}::uuid AND project_id=${projectId}::uuid AND deleted_at IS NULL
+      RETURNING *,(SELECT full_name FROM scholars WHERE id=scholar_id) AS full_name`;
+    await sql`INSERT INTO audit_logs(user_id,project_id,action,entity_type,entity_id,metadata) VALUES(${session.user.id},${projectId}::uuid,'update_os','travel_report',${id},jsonb_build_object('osNumber',${parsed.data.osNumber}::text))`;
     return Response.json(travelReportRow(row));
   } catch (error) { return travelError(error); }
 }

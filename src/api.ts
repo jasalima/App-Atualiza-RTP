@@ -191,7 +191,7 @@ export const documents = {
 };
 
 export type FaptoEmailSettings = { recipients: string[]; cc: string[]; subject: string; body: string; saved: boolean; provider: { ready: boolean; from: string }; placeholders: Record<string, string> };
-export type FaptoEmailPreview = { preview: true; to: string[]; cc: string[]; from: string; ready: boolean; subject: string; body: string; lastSentAt: string | null; files: string[] };
+export type FaptoEmailPreview = { preview: true; to: string[]; cc: string[]; from: string; ready: boolean; subject: string; body: string; lastSentAt: string | null; files: string[]; missingOs?: string[] };
 // Signed Formulário 26 reports e-mailed to the FAPTO analyst (Resend), with the project's message model.
 export const faptoEmail = {
   settings: (projectId: string) => route<FaptoEmailSettings>(`/email/settings?projectId=${projectId}`),
@@ -202,9 +202,11 @@ export const faptoEmail = {
 // Filled Formulário 26 reports (prestação de contas de diárias e passagens).
 export const travelReports = {
   list: (projectId: string) => route<TravelReport[]>(`/travel/reports?projectId=${projectId}`),
-  start: (projectId: string, scholarId: string) => route<TravelReport>('/travel/reports', { method: 'POST', body: JSON.stringify({ projectId, scholarId }) }),
+  start: (projectId: string, scholarId: string, osNumber: string) => route<TravelReport>('/travel/reports', { method: 'POST', body: JSON.stringify({ projectId, scholarId, osNumber }) }),
+  // Nº OS FAPTO apart from the form: it is not in the signed document.
+  setOs: (projectId: string, id: string, osNumber: string) => route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`, { method: 'PATCH', body: JSON.stringify({ osNumber }) }),
   get: (projectId: string, id: string) => route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`),
-  save: (projectId: string, id: string, body: Omit<TravelReport, 'id' | 'projectId' | 'scholarId' | 'scholarName' | 'createdAt' | 'updatedAt' | 'beneficiary'>) =>
+  save: (projectId: string, id: string, body: Omit<TravelReport, 'id' | 'projectId' | 'scholarId' | 'scholarName' | 'osNumber' | 'createdAt' | 'updatedAt' | 'beneficiary'>) =>
     route<TravelReport>(`/travel/reports/${id}?projectId=${projectId}`, { method: 'PUT', body: JSON.stringify(body) }),
   remove: (projectId: string, id: string, opts: { cancelSignatures?: boolean; reason?: string } = {}) => route(`/travel/reports/${id}?projectId=${projectId}`, { method: 'DELETE', body: JSON.stringify(opts) }),
   // Named by the server: PCDP_<beneficiary>_<trip start>[_assinado].

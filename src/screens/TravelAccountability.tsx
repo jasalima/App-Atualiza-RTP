@@ -7,6 +7,7 @@ import SendDocumentButton from '../SendDocumentButton';
 import { FaptoSendDrawer, FaptoTemplateDrawer } from '../FaptoEmail';
 import { Drawer, Empty, Notice, PageHead, Skeleton, Tag, errorText, fmt, fmtPeriod, useScope, useToast } from '../ui';
 import { useLive } from '../live';
+import { isValidOs, normalizeOs, OS_HINT } from '@/lib/fapto-os';
 
 export default function TravelAccountability() {
   const { project, user, canManage } = useScope();
@@ -19,6 +20,7 @@ function TravelSection({ projectId, scholarId, canManage }: { projectId: string;
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [emailing, setEmailing] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([]), [template, setTemplate] = useState(false);
   const [starting, setStarting] = useState(false), [startFor, setStartFor] = useState(''), [blankFor, setBlankFor] = useState('');
+  const [os, setOs] = useState(''), osOk = isValidOs(normalizeOs(os));
   const load = () => Promise.all([scholars.list(projectId), travelReports.list(projectId)]).then(([rows, list]) => {
     const allowed = canManage ? rows : rows.filter((row) => row.id === scholarId);
     setMembers(allowed); setReports(list);
@@ -35,7 +37,7 @@ function TravelSection({ projectId, scholarId, canManage }: { projectId: string;
   // "Iniciar relatório de prestação de contas": choose the member, then fill the report.
   async function start() {
     setBusy(true);
-    try { const created = await travelReports.start(projectId, startFor); nav(`/travel/${created.id}`); }
+    try { const created = await travelReports.start(projectId, startFor, normalizeOs(os)); nav(`/travel/${created.id}`); }
     catch (e) { toast(errorText(e), 'crit'); setBusy(false); }
   }
   async function remove(r: TravelReport) {
@@ -80,7 +82,8 @@ Cancelar as assinaturas e excluir o relatório de ${r.scholarName}? As assinatur
               onChange={(e) => setSelected((list) => e.target.checked ? [...list, r.id] : list.filter((x) => x !== r.id))} aria-label={`Selecionar ${r.scholarName}`} /></td>}
             <td><NavLink to={`/travel/${r.id}`}><b>{r.scholarName}</b></NavLink></td>
             <td>{r.destination || <span className="muted">A preencher</span>}{r.origin && <div className="muted" style={{ fontSize: 12.5 }}>saindo de {r.origin}</div>}</td>
-            <td className="num">{r.departureDate ? fmtPeriod(r.departureDate, r.returnDate) : <span className="muted">—</span>}</td>
+            <td className="num">{r.departureDate ? fmtPeriod(r.departureDate, r.returnDate) : <span className="muted">—</span>}
+              <div className="muted" style={{ fontSize: 12.5 }}>{r.osNumber ? `OS ${r.osNumber}` : 'Sem Nº OS'}</div></td>
             <td><Tag tone={signed ? 'ok' : r.status === 'finalized' ? 'ok' : 'info'}>{signed ? 'Assinado' : r.status === 'finalized' ? 'Concluído' : 'Em preenchimento'}</Tag></td>
             {canManage && <td>{r.emailedAt ? <Tag tone="ok">Enviado {fmt(r.emailedAt)}</Tag> : <span className="muted">{signed ? 'Não enviado' : '—'}</span>}</td>}
             <td className="num">{fmt(r.updatedAt)}</td>
@@ -115,7 +118,9 @@ Cancelar as assinaturas e excluir o relatório de ${r.scholarName}? As assinatur
       <div className="grid-form">
         <label className="field span-2">Membro do projeto<select value={startFor} onChange={(e) => setStartFor(e.target.value)}>{members.map((m) => <option key={m.id} value={m.id}>{m.full_name}{m.role_area ? ` — ${m.role_area}` : ''}</option>)}</select></label>
         {(() => { const m = members.find((x) => x.id === startFor); return m && <dl className="facts span-2"><div><dt>Função</dt><dd>{m.role_area || 'Não informada'}</dd></div><div><dt>Telefone</dt><dd>{m.phone || 'Não cadastrado'}</dd></div><div><dt>E-mail</dt><dd>{m.email || 'Não cadastrado'}</dd></div></dl>; })()}
-        <div className="form-foot span-2"><button className="btn btn-quiet" onClick={() => setStarting(false)}>Cancelar</button><button className="btn btn-primary" disabled={busy || !startFor} onClick={() => void start()}>{busy ? 'Iniciando…' : 'Iniciar e preencher'}</button></div>
+        <label className="field span-2">Nº OS FAPTO<input value={os} onChange={(e) => setOs(e.target.value)} onBlur={() => setOs(normalizeOs(os))} placeholder="WEB:99999/2026" autoComplete="off" aria-invalid={!!os && !osOk} />
+          <small>{os && !osOk ? `Confira o número. ${OS_HINT}.` : `${OS_HINT}. Vai no e-mail à FAPTO para localizar a diária.`}</small></label>
+        <div className="form-foot span-2"><button className="btn btn-quiet" onClick={() => setStarting(false)}>Cancelar</button><button className="btn btn-primary" disabled={busy || !startFor || !osOk} onClick={() => void start()}>{busy ? 'Iniciando…' : 'Iniciar e preencher'}</button></div>
       </div>
     </Drawer>
   </>;
